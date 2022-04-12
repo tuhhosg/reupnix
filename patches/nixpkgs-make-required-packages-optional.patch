@@ -1,0 +1,26 @@
+diff --git a/nixos/modules/config/system-path.nix b/nixos/modules/config/system-path.nix
+index 875c4c9c441..a703c6d28aa 100644
+--- a/nixos/modules/config/system-path.nix
++++ b/nixos/modules/config/system-path.nix
+@@ -112,6 +112,12 @@ in
+         description = "List of directories to be symlinked in <filename>/run/current-system/sw</filename>.";
+       };
+ 
++      includeRequiredPackages = mkOption {
++        type = types.bool;
++        default = true;
++        description = "Whether to include a list of (usually) required packages in <option>environment.systemPackages</option>.";
++      };
++
+       extraOutputsToInstall = mkOption {
+         type = types.listOf types.str;
+         default = [ ];
+@@ -142,7 +148,7 @@ in
+ 
+   config = {
+ 
+-    environment.systemPackages = requiredPackages ++ config.environment.defaultPackages;
++    environment.systemPackages = (lib.optionals config.environment.includeRequiredPackages requiredPackages) ++ config.environment.defaultPackages;
+ 
+     environment.pathsToLink =
+       [ "/bin"

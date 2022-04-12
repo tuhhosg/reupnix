@@ -1,0 +1,122 @@
+diff --git a/nixos/modules/system/activation/top-level.nix b/nixos/modules/system/activation/top-level.nix
+index b8aeee8c11b..f4e72666f39 100644
+--- a/nixos/modules/system/activation/top-level.nix
++++ b/nixos/modules/system/activation/top-level.nix
+@@ -27,7 +27,7 @@ let
+
+       # Containers don't have their own kernel or initrd.  They boot
+       # directly into stage 2.
+-      ${optionalString (!config.boot.isContainer) ''
++      ${optionalString config.boot.loader.enable ''
+         if [ ! -f ${kernelPath} ]; then
+           echo "The bootloader cannot find the proper kernel image."
+           echo "(Expecting ${kernelPath})"
+@@ -74,18 +74,19 @@ let
+       ${concatStringsSep "\n"
+       (mapAttrsToList (name: path: "ln -s ${path} $out/specialisation/${name}") children)}
+
+-      mkdir $out/bin
+-      export localeArchive="${config.i18n.glibcLocales}/lib/locale/locale-archive"
+-      substituteAll ${./switch-to-configuration.pl} $out/bin/switch-to-configuration
+-      chmod +x $out/bin/switch-to-configuration
+-      ${optionalString (pkgs.stdenv.hostPlatform == pkgs.stdenv.buildPlatform) ''
+-        if ! output=$($perl/bin/perl -c $out/bin/switch-to-configuration 2>&1); then
+-          echo "switch-to-configuration syntax is not valid:"
+-          echo "$output"
+-          exit 1
+-        fi
++      ${optionalString config.system.build.makeSwitchable ''
++        mkdir $out/bin
++        export localeArchive="${config.i18n.glibcLocales}/lib/locale/locale-archive"
++        substituteAll ${./switch-to-configuration.pl} $out/bin/switch-to-configuration
++        chmod +x $out/bin/switch-to-configuration
++        ${optionalString (pkgs.stdenv.hostPlatform == pkgs.stdenv.buildPlatform) ''
++          if ! output=$($perl/bin/perl -c $out/bin/switch-to-configuration 2>&1); then
++            echo "switch-to-configuration syntax is not valid:"
++            echo "$output"
++            exit 1
++          fi
++        ''}
+       ''}
+-
+       echo -n "${toString config.system.extraDependencies}" > $out/extra-dependencies
+
+       ${config.system.extraSystemBuilderCmds}
+@@ -102,22 +103,21 @@ let
+     allowSubstitutes = false;
+     buildCommand = systemBuilder;
+
+-    inherit (pkgs) coreutils;
+-    systemd = config.systemd.package;
+-    shell = "${pkgs.bash}/bin/sh";
+-    su = "${pkgs.shadow.su}/bin/su";
+-    utillinux = pkgs.util-linux;
++    #shell = "${pkgs.bash}/bin/sh";
+
+-    kernelParams = config.boot.kernelParams;
+-    installBootLoader = config.system.build.installBootLoader;
++    systemd = config.systemd.package;
++    kernelParams = /* lib.optionalString config.boot.loader.enable */ config.boot.kernelParams;
+     activationScript = config.system.activationScripts.script;
+     dryActivationScript = config.system.dryActivationScript;
+     nixosLabel = config.system.nixos.label;
+-
+     configurationName = config.boot.loader.grub.configurationName;
+
+     # Needed by switch-to-configuration.
+-    perl = pkgs.perl.withPackages (p: with p; [ ConfigIniFiles FileSlurp NetDBus ]);
++    installBootLoader = lib.optionalString config.system.build.makeSwitchable config.system.build.installBootLoader;
++    perl = lib.optionalString config.system.build.makeSwitchable (pkgs.perl.withPackages (p: with p; [ ConfigIniFiles FileSlurp NetDBus ]));
++    su = lib.optionalString config.system.build.makeSwitchable "${pkgs.shadow.su}/bin/su";
++    utillinux = lib.optionalString config.system.build.makeSwitchable pkgs.util-linux;
++    coreutils = lib.optionalString config.system.build.makeSwitchable pkgs.coreutils;
+   };
+
+   # Handle assertions and warnings
+@@ -197,6 +197,15 @@ in
+       );
+     };
+
++    boot.loader.enable = mkOption {
++      default = !config.boot.isContainer;
++      defaultText = literalExpression "!config.boot.isContainer";
++      description = ''
++        Whether to make this system configuration directly bootable by configuring a bootloader, or instead just prvice booting from stage 2 onwards.
++      '';
++      type = types.bool;
++    };
++
+     system.boot.loader.id = mkOption {
+       internal = true;
+       default = "";
+@@ -245,6 +254,15 @@ in
+         } (types.either types.str types.package);
+       };
+
++      makeSwitchable = mkOption {
++        default = !config.boot.isContainer;
++        defaultText = literalExpression "!config.boot.isContainer";
++        description = ''
++          Whether to create the <literal>switch-to-configuration</literal> script, allowing to switch to the system at runtime or activating it for booting from the bootloader.
++        '';
++        type = types.bool;
++      };
++
+       toplevel = mkOption {
+         type = types.package;
+         readOnly = true;
+diff --git a/nixos/modules/system/boot/stage-1.nix b/nixos/modules/system/boot/stage-1.nix
+index 04753a6767d..03ea4e3e1c0 100644
+--- a/nixos/modules/system/boot/stage-1.nix
++++ b/nixos/modules/system/boot/stage-1.nix
+@@ -464,8 +464,8 @@ in
+
+     boot.initrd.enable = mkOption {
+       type = types.bool;
+-      default = !config.boot.isContainer;
+-      defaultText = literalExpression "!config.boot.isContainer";
++      default = config.boot.loader.enable;
++      defaultText = literalExpression "config.boot.loader.enable";
+       description = ''
+         Whether to enable the NixOS initial RAM disk (initrd). This may be
+         needed to perform some initialisation tasks (like mounting

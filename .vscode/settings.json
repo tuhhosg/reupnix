@@ -1,0 +1,354 @@
+{
+	"editor.insertSpaces": true, "editor.tabSize": 4, // (tabs don't work well in nix multiline strings or when pasting bash snippets, so unfortuntely have to use spaces for indention)
+
+	"cSpell.diagnosticLevel": "Information", // to find spelling mistakes
+	"cSpell.words": [ // this got a bit out of hand ...
+		"aarch64", // processor architecture
+		"adfs", // kmod / file system
+		"affs", // kmod / file system
+		"agetty", // program
+		"ahci", // kmod
+		"alsa", // program
+		"analogix", // kmod
+		"anyprot", // option
+		"askpass", // program
+		"attrset", // nix/abbr (attribute set)
+		"authtok", // cli arg
+		"AUTOFS4", // kernel config
+		"autologin", // agetty
+		"autoOptimiseStore", // Nix(OS)
+		"autossh", // program
+		"autovt", // serice
+		"avahi", // programm
+		"bcache", // program (block dev cache)
+		"befs", // kmod / file system
+		"binfmt", // abbr "binary format"
+		"bintools", // package
+		"blkid", // program / function
+		"blockdev", // program / function
+		"bootable", // ~= able to boot
+		"bootcode", // filename
+		"bootloader", // word
+		"bridgeadapter", // virtual box
+		"bridgedifs", // virtual box
+		"btintel", // kmod
+		"btqca", // kmod
+		"btusb", // kmod
+		"builtins", // nix
+		"cflags", // cli arg
+		"chattr", // program / function
+		"checksumming", // word
+		"cmds", // abbr commands
+		"colordiff", // program
+		"concat", // abbr
+		"configfile", // nix option (kernel)
+		"configurability", // word
+		"controlvm", // virtual box
+		"conv", // cli arg
+		"convertfromraw", // virtual box
+		"coredump", // concat
+		"coreutils", // package
+		"cramfs", // kmod / file system
+		"createrawvmdk", // virtual box
+		"createvm", // virtual box
+		"cryptsetup", // program
+		"ctxify", // ~= add context
+		"CWD", // abbr
+		"dbus", // linux
+		"dedup", // abbr (deduplicaton)
+		"deduped", // abbr deduplicated
+		"deduplicated", // word
+		"deduplicates", // 3ps od deduplicate
+		"deduplication", // word
+		"deps", // abbr dependencies
+		"dhcpcd", // programm
+		"dirlinks", // cli arg
+		"dmask", // mount option
+		"dmode", // cli arg
+		"dockremap", // option
+		"dontUnpack", // nixos
+		"dosfstools", // package
+		"dpkg", // program
+		"dropbear", // program
+		"dtbs", // file type
+		"dtoverlay", // option
+		"dtparam", // option
+		"e2fsprogs", // package
+		"eduroam", // organization
+		"eeprom", // abbr
+		"elif", // abbr "else if"
+		"erofs", // kmod / file system
+		"ethernet", // word
+		"exofs", // kmod / file system
+		"extlinux", // program
+		"faketcp", // cli arg
+		"fallocate", // program / function
+		"fdisk", // program
+		"fetchpatch", // nix
+		"fetchurl", // nix function
+		"fido2", // kernel module
+		"filesystems", // plural
+		"firmwareLinuxNonfree", // nixos
+		"fmask", // mount option
+		"fmode", // cli arg
+		"foldl", // nix (fold left)
+		"fontconfig", // package
+		"freedesktop", // organization
+		"freevxfs", // kmod / file system
+		"FUNCNAME", // bash var
+		"fusb302", // knod
+		"fuseiso", // program
+		"fusermount", // program
+		"gamemode", // program
+		"gconv", // library
+		"gdisk", // program
+		"getsize64", // cli arg
+		"getty", // serice
+		"gids", // abbr/plural (group IDs)
+		"gnugrep", // package
+		"gnupg", // program
+		"gparted", // program
+		"gpio", // abbr (general purpose IO)
+		"gptfdisk", // program
+		"grafana", // program
+		"gtkrc", // file name
+		"hardlink", "hardlinks",  // vs. soft-/symlink
+		"hdmi", // protocol
+		"hdparm", // program
+		"HISTCONTROL", // bash var
+		"hmac", // abbr (hash-based message authentication code)
+		"hostiocache", // virtual box
+		"hostnamed", // daemon
+		"hostnames", // plural
+		"hpfs", // kmod / file system
+		"hwdb", // file name
+		"i2cdetect", // program
+		"iftop", // program
+		"ignoredups", // cli arg
+		"ignorespace", // cli arg
+		"imap", // nix function (int-map)
+		"importd", // daemon
+		"inetd", // program
+		"inetutils", // package
+		"inodes", // plural
+		"inplace", // cli arg
+		"internalcommands", // virtual box
+		"iotop", // program
+		"iputils", // package
+		"iwlwifi", // kmod
+		"journalctl", // program
+		"journaling", // word (fs)
+		"keepalive", // option
+		"keepdate", // cli arg
+		"kexec", // program/function
+		"keydev", // cli arg
+		"keygen", // program / function
+		"kmod", // program/function
+		"LESSOPEN", // env var
+		"libaio", // cli arg
+		"libfido2", // library
+		"libgcrypt", // library
+		"libgl", // library
+		"libinput", // option
+		"libraspberrypi", // package
+		"libstdc", // library
+		"libstdcxx5", // package
+		"libusb", // cli arg
+		"libx265", // cli arg
+		"likeauth", // cli arg
+		"localed", // daemon
+		"localmodconfig", // cli arg (kernel)
+		"logind", // systemd
+		"losetup", // program / function
+		"lowerdir", // mount overlay option
+		"luks", // linux
+		"lusb", // cli arg
+		"mbuffer", // program
+		"mdns", // abbr
+		"mgmt", // abbr (management)
+		"mindepth", // cli arg (find)
+		"minix", // kmod / file system
+		"mipi", // kmod
+		"mkdir", // program / function
+		"mkfifo", // program / function
+		"mkmnt", // function: make mount
+		"mkpasswd", // program / function
+		"mktemp", // program / function
+		"mmcblk", // diks type
+		"modifyvm", // virtual box
+		"mountpoint", // program/function
+		"mpris", // abbr
+		"multiplatform", // nix
+		"nameserver", // cli arg
+		"nanorc", // file name
+		"ncdu", // program
+		"netns", // linux
+		"netrom", // kmod
+		"nettools", // package
+		"networkd", // daemon
+		"nilfs2", // kmod / file system
+		"NIXCFG", // abbr
+		"nixos", // (duh)
+		"nixpkgs", // nix
+		"noatime", // mount option
+		"noauto", // mount option
+		"noclear", // agetty
+		"nodev", // mount option
+		"nodiscard", // cli arg
+		"nofail", // cli arg
+		"nogroup", // linux
+		"nologin", // function / program
+		"NOPASSWD", // sudoers
+		"noprofile", // cli arg
+		"notrunc", // cli arg
+		"nouserok", // cli arg
+		"nscd", // daemon
+		"nssmdns", // protocol
+		"ntfs", // kmod / file system
+		"nullok", // cli arg
+		"numfmt", // program / function
+		"nvme", // storage protocol
+		"oldconfig", // cli arg (make linux kernel)
+		"omfs", // kmod / file system
+		"oneshot", // systemd
+		"oomd", // daemon (out of memory)
+		"optimise", // them brits
+		"ostype", // virtual box
+		"pactl", // program
+		"panfrost", // knod
+		"partlabel", // linux
+		"partprobe", // program / function
+		"pbkdf", // cli arg
+		"pciutils", // package
+		"PCRE", // abbr (perl compatible regular expressions)
+		"pieeprom", // abbr
+		"pkgs", // nix
+		"pname", // nix/abbr (package name)
+		"podman", // program
+		"polkit", // program
+		"portcount", // virtual box
+		"postgres", // program
+		"poweroff", // program / function
+		"probs", // abbr (probably)
+		"prometheus", // program
+		"proto", // abbr (protocol)
+		"pubkey", // cli arg
+		"qview", // program
+		"ramfs", // linux
+		"randwrite", // cli arg
+		"raspberrypi", // abbr
+		"raspberrypifw", // package
+		"rawdisk", // virtual box
+		"rbind", // cli arg
+		"rdesktop", // program
+		"readarray", // bash
+		"realpath", // program / function
+		"redistributable", // word
+		"resolv", // file name
+		"resolvconf", // program
+		"rhosts", // linux
+		"rockchip", // hardware
+		"rockchipdrm", // kmod
+		"rpiboot", // package
+		"rpicm4", // abbr (Raspberry PI Compute Module 4)
+		"rpool", // zfs
+		"sanoid", // program
+		"saradc", // kmod
+		"sata", // storage protocol
+		"sched", // abbr (scheduler)
+		"screenshotpng", // virtual box
+		"sddm", // program
+		"selfsigned", // cli arg
+		"serialno", // program
+		"seteuid", // cli arg
+		"setsid", // program/function
+		"setuid", // linux
+		"sgdisk", // program
+		"showvminfo", // virtual box
+		"sigs", // cli arg
+		"skel", // abbr (skeleton (directory))
+		"smartmontools", // package
+		"snapshotted", // "have snapshot taken"
+		"snapshotting", // "taking snapshot(s)"
+		"socat", // program / function
+		"specialfs", // nixos option
+		"specialisation", "specialisations", // nixos option
+		"spidermonkey", // library
+		"startvm", // virtual box
+		"stdenv", // nix
+		"storageattach", // virtual box
+		"sublist", // nix function
+		"subshell", // bash
+		"suspendable", // word
+		"swapoff", // program / function
+		"swapon", // program / function
+		"swraid", // nixos option
+		"syncoid", // program
+		"sysv", // kmod
+		"tabsize", // option
+		"tabstospaces", // option
+		"tbcache", // file type
+		"tcpc", // abbr (TCP client)
+		"tcpm", // knod
+		"tcps", // plural
+		"TGMK", // unit suffixes
+		"timedated", "timedate", // daemon
+		"timefmt", // cli arg
+		"timesync", // systemd
+		"timesyncd", // daemon
+		"TKIP", // abbr
+		"TMPDIR", // env var
+		"tmpfiles", // systemd
+		"tmpfs", // linux
+		"toplevel", // nix
+		"typecode", // cli arg
+		"uart", "uarts", // serial protocol
+		"uartmode", // virtual box
+		"uboot", // program
+		"udev", // program
+		"udhcpc", // program
+		"udisks", // program
+		"udisksctl", // program
+		"udptunnel", // program
+		"uefi", // abbr
+		"uids", // abbr/plural (group IDs)
+		"uncompresses", // ~= reverse compression
+		"unencrypted", // ~= not encrypted / decrypted
+		"unixtools", // package
+		"unmanaged", // word
+		"upower", // program
+		"upperdir", // mount overlay option
+		"urandom", // linux
+		"usbboot", // program
+		"usbhid", // kmod
+		"usbutils", // package
+		"userns", // linux
+		"utillinux", // package
+		"vboxusers", // virtual box
+		"vfat", // linux
+		"vhost", "vhosts", // abbr (virtual host)
+		"virtualbox", // program
+		"virtualisation", // nixos option
+		"vmdk", // virtual disk format
+		"VSIX", // abbr
+		"vulkan", // program
+		"wikipedia", // website
+		"wipefs", // program / function
+		"wlan", // abbr
+		"workdir", // mount overlay option
+		"WWPA", // abbr
+		"xbel", // file type
+		"xclip", // program
+		"xhci_pci", // kmod
+		"XHCI", // abbr
+		"xinit", // program
+		"xinitrc", // filename
+		"xorg", // program
+		"xorgserver", // package
+		"xset", // prog / function
+		"xzcat", // program / function
+		"zbar", // program
+		"zoneinfo", // file name
+		"zstdcat", // program / function
+	],
+}

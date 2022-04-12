@@ -1,0 +1,3 @@
+# treat lock file as binary (collapsed diff, no line count, no EOL treatment)
+flake.lock binary
+modules/lsmod.out binary

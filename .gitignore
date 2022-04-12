@@ -1,0 +1,5 @@
+# This file is also used in »rsync --exclude-from='.gitignore'«, so keep the format compatible!
+
+# (nixos-rebuild build, etc)
+/result
+/result-*
