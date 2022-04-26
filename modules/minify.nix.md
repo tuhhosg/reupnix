@@ -15,40 +15,10 @@ The by far biggest package is currently `perl` with almost 60MB. Once `update-us
 
 ```nix
 #*/# end of MarkDown, beginning of NixOS module:
-specialArgs@{ config, lib, pkgs, inputs, specialisation, ... }: let
+dirname: inputs: specialArgs@{ config, pkgs, lib, ... }: let inherit (inputs.self) lib; in let
     cfg = config.th.minify;
-    moduleArgs = { utils = import "${inputs.nixpkgs.outPath}/nixos/lib/utils.nix" { inherit (specialArgs) lib config pkgs; }; } // specialArgs;
 
-    ## Given a path to a module in »nixpkgs/nixos/modules/« and placed in another module's »imports«, adds an option »disableModule.<path>« that defaults to being false, but when explicitly set to »true«, disables all »config« values set by the module.
-    #  Every module should, but not all modules do, provide such an option themselves.
-    #  This is similar to adding the path to »disabledModules«, but:
-    #  * leaves the module's other definitions (options, imports) untouched, preventing further breakage due to missing options
-    #  * makes the disabling an option, i.e. it can be changed dynamically based on other config values
-    makeModuleConfigOptional = modulePath: let
-        fullPath = "${inputs.nixpkgs.outPath}/nixos/modules/${modulePath}";
-        module = import fullPath moduleArgs;
-    in { _file = fullPath; imports = [
-        { options.disableModule.${modulePath} = lib.mkOption { description = "Disable the nixpkgs module ${modulePath}"; type = lib.types.bool; default = false; }; }
-        (if module?config then (
-            module // { config = lib.mkIf (!config.disableModule.${modulePath}) module.config; }
-        ) else (
-            { config = lib.mkIf (!config.disableModule.${modulePath}) module; }
-        ))
-        { disabledModules = [ modulePath ]; }
-    ]; };
-
-    ## Given a path to a module and a function taking the instantiation of the original and returning a partial module as override, recursively applies that override to the original module definition.
-    #  This allows for much more fine-grained overriding of the configuration (or even other parts) of a module than »makeModuleConfigOptional«, but the override function needs to be tailored to internal implementation details of the original module.
-    #  Esp. it is important to know that »mkIf« both existing in the original module and in the return from the override results in an attrset »{ _type="if"; condition; content; }«. Accessing content from an existing »mkIf« thus requires adding ».content« to the lookup path, and the »content« of returned »mkIf«s may get merged with any existing attribute of that name.
-    overrideModule = modulePath: override: let
-        fullPath = "${inputs.nixpkgs.outPath}/nixos/modules/${modulePath}";
-        module = import fullPath moduleArgs;
-    in { _file = fullPath; imports = [
-        (lib.th.mergeAttrsRecursive [ module (override module) ])
-        { disabledModules = [ modulePath ]; }
-    ]; };
-
-    desiredSystemPackages = [
+    desiredSystemPackages = [ # (can check this against »map (p: p.pname or p.name) nixosConfigurations.target.config.environment.systemPackages«)
         "iproute2" "iputils" "net-tools" # maybe
         "systemd" # clearly
         "kmod" # unless we disable module support (which would run contraire to configurability) we'll have this anyway
@@ -60,12 +30,13 @@ specialArgs@{ config, lib, pkgs, inputs, specialisation, ... }: let
     ];
     optionalModules = [
         "config/console.nix" # don't need a pretty console
-        "tasks/swraid.nix" # don't need software raid (defines some »availableKernelModules« and adds »pkgs.mdadm«)
-        "tasks/lvm.nix" # don't need lvm or (currently) and dm layers
-        "tasks/bcache.nix" # also don't need block dev caching
+        "config/locale.nix" # includes tzdata
         "system/boot/kexec.nix" # we don't plan to change the kernel at runtime
-        "tasks/filesystems/vfat.nix" # copies itself to initramfs (we do need some kernel modules)
+        "tasks/bcache.nix" # also don't need block dev caching
         "tasks/filesystems/ext.nix" # copies itself to initramfs (we do need some kernel modules)
+        "tasks/filesystems/vfat.nix" # copies itself to initramfs (we do need some kernel modules)
+        "tasks/lvm.nix" # don't need lvm or (currently) and dm layers
+        "tasks/swraid.nix" # don't need software raid (defines some »availableKernelModules« and adds »pkgs.mdadm«)
     ];
 in {
 
@@ -74,24 +45,41 @@ in {
     }; };
 
     imports = (
-        map makeModuleConfigOptional optionalModules
+        map (lib.my.makeModuleConfigOptional specialArgs) optionalModules
     ) ++ [
         # (None of these should have any effect by default!)
-        (overrideModule "virtualisation/nixos-containers.nix" (module: {
+        (lib.my.overrideModule specialArgs "virtualisation/nixos-containers.nix" (module: {
             options.boot.interactiveContainers = (lib.mkEnableOption "interactive nixos-containers") // { default = true; };
             config.content.environment.systemPackages = lib.mkIf config.boot.interactiveContainers module.config.content.environment.systemPackages;
         }))
-        (overrideModule "tasks/filesystems.nix" (module: {
-            options.includeFSpackages = (lib.mkEnableOption "interactive nixos-containers") // { default = true; };
+        (lib.my.overrideModule specialArgs "tasks/filesystems.nix" (module: {
+            options.includeFSpackages = (lib.mkEnableOption "inclusion of filesystem maintenance tools") // { default = true; };
             config.environment.systemPackages = lib.mkIf config.includeFSpackages module.config.environment.systemPackages; # adds fuse
             config.system.fsPackages = lib.mkIf config.includeFSpackages module.config.system.fsPackages; # adds dosfstools
         }))
-        (overrideModule "tasks/network-interfaces.nix" (module: {
+        (lib.my.overrideModule specialArgs "tasks/network-interfaces.nix" (module: {
             options.includeNetTools = (lib.mkEnableOption "inclusion of basic networking utilities") // { default = true; };
             config.environment.systemPackages = lib.mkIf config.includeNetTools module.config.environment.systemPackages; # adds [ host iproute2 iputils nettools ]
             config.systemd.services.network-local-commands = lib.mkIf config.includeNetTools module.config.systemd.services.network-local-commands; # implements »config.networking.localCommands« using with iproute2
             #config.security.wrappers.ping = lib.mkIf config.includeNetTools module.config.security.wrappers.ping; # adds »ping« based on »iputils«
         }))
+        ({
+            # Using this as copy and install target instead of the normal toplevel drops the store dependencies on the kernel and initrd, since those are being copied to /boot anyway.
+            # The symbolic linking is necessary for the bootloader-installer to pick up the files to be copied (and is is assumed that the full system will be build and made available to the installer).
+            options.th.minify.topLevel = lib.mkOption { readOnly = true; default = if cfg.enable then (lib.foldr (args: drv:
+                pkgs.replaceDependency { oldDependency = args.old; newDependency = args.new or (pkgs.writeText args.old.name (builtins.unsafeDiscardStringContext "removed ${args.old}")); inherit drv; }
+            ) config.system.build.toplevel [
+                #{ old = config.system.build.extraUtils; } # (the initrd sporadically pulls this in, but that doesn't matter without initrd (https://github.com/NixOS/nix/issues/5633#issuecomment-1033001139))
+                rec { old = config.system.build.initialRamdisk; new = pkgs.runCommandLocal old.name {
+                    old = builtins.unsafeDiscardStringContext old;
+                } "mkdir $out ; ln -sfT $old/initrd $out/initrd"; }
+                rec { old = config.boot.kernelPackages.kernel; new = pkgs.runCommandLocal old.name {
+                    old = builtins.unsafeDiscardStringContext old;
+                    modules = pkgs.runCommandLocal old.name { } "mkdir $out ; cp -a ${old}/lib $out/lib";
+                } "mkdir $out ; ln -sfT $old/bzImage $out/bzImage ; cp -a $modules/lib $out/lib"; }
+            ]) else null; };
+            config.system.build.initialRamdiskSecretAppender = lib.mkForce "";
+        })
     ];
 
     config = lib.mkIf cfg.enable (lib.mkMerge [
@@ -129,6 +117,11 @@ in {
             #environment.variables.EDITOR = ?? (we don't have one)
         })
         ({
+            # Remove »tzdata«:
+            disableModule."config/locale.nix" = true;
+            systemd.managerEnvironment.TZDIR = lib.mkForce "";
+        })
+        ({
             # Static DNS settings:
             # This implicitly disables the »resolvconf« service(s).
             environment.etc."resolv.conf" = lib.mkDefault { text = "${lib.concatMapStringsSep "\n" (ip: "nameserver ${ip}") config.networking.nameservers}\n"; };
@@ -143,7 +136,7 @@ in {
             services.udisks2.enable = false; # depends on boost (~15MB), and on (a different version of) icu4c (~32MB)
             security.sudo.enable = false; # »sudo«: ~5MB. May or may not need this.
 
-            disableModule = lib.th.mapMerge (path: { ${path} = true; }) optionalModules; # see »optionalModules« above
+            disableModule = lib.my.mapMerge (path: { ${path} = true; }) optionalModules; # see »optionalModules« above
         })
         ({
             # Disable localization:
@@ -161,6 +154,7 @@ in {
                 git = prev.git.overrideAttrs (old: { doInstallCheck = false ; }); # takes forever and then fails (it's going to be fine ^^)
                 util-linux = prev.util-linux.override { ncurses = null; };
             }) ];
+            programs.bash.enableCompletion = false;
             programs.less.enable = lib.mkForce false; environment.variables.PAGER = lib.mkForce "cat"; # default depends on less and ncurses
             programs.command-not-found.enable = false; # depends on perl (and more)
         })
@@ -190,13 +184,14 @@ in {
                 #/bin/chattr -f +i /var/empty || true
             '';
         })
-        ({
-            # Rewrite »activationScripts.etc« to remove its dependency on »perl«:
-            boot.initrd.kernelModules = [ "overlay" ];
+        # Rewrite »activationScripts.etc« to remove its dependency on »perl«:
+        # Note that this is somewhat incomplete as it makes everything in etc a symlink to a root owned, world-readable file (or dir of those).
+        # While logically there is no way of avoiding that, since everything in the nix store must be non-writable and is readable by everyone, some programs don't like it (e.g. OpenSSH).
+        # »nixos/modules/system/etc/setup-etc.pl« allows for (snake-oil) exceptions based on ».{mode,uid,gid}« suffixed files, but none of them are relevant for this minimal config (just yet).
+        (lib.mkIf false { # Variant 1: static etc with writable overlay, allowing the creation on not-world-readable files by activation scripts
+            boot.initrd.kernelModules = [ "overlay" ]; # TODO: this should not be required
             # The new etc script must run before any write to »/etc«.
             system.activationScripts.etc = lib.mkForce "";
-            # NOTE: This is incomplete. Everything in etc is a symlink to a root owned, world-readable file (or dir of those).
-            # »nixos/modules/system/etc/setup-etc.pl« allows for explicit exceptions based on ».{mode,uid,gid}« suffixed files, but none of them are relevant for this minimal config (just yet).
             system.activationScripts."AA-etc" = { deps = [ "specialfs" ]; text = ''
                 mkdir -pm 000 /run/etc-overlay ; mkdir -p 755 /run/etc-overlay/{dynamic,workdir}
                 mount -t overlay overlay -o lowerdir=${config.system.build.etc}/etc,workdir=/run/etc-overlay/workdir,upperdir=/run/etc-overlay/dynamic /etc
@@ -206,17 +201,49 @@ in {
                 # »mount -t overlay overlay -o ro,lowerdir=dynamic:static merged«
                 # but that behaves weird when modifying »dynamic« after mounting. *Could* re-mount as this at the end of the overall activation.
             ''; };
-            # An alternative to this would be to ensure that all files are in the etc package (we want static users anyway) and then (and this definitively is a hack) chown/chmod files in that package after the »nix copy«.
         })
-        ({
-            # Rewrite »activationScripts.users« to remove its dependency on »perl«:
-            #system.activationScripts.users = lib.mkForce ""; # TODO: this needs an alternative implementation!
+        (lib.mkIf true { # Variant 2: completely read-only etc, may very well not work with many configurations
+            # Do this early to get errors if anything later writes to »/etc«.
+            system.activationScripts.etc = lib.mkForce "";
+            system.activationScripts."AA-etc" = { deps = [ "specialfs" ]; text = ''
+                mkdir -pm 000 /etc ; mount -o bind ${config.system.build.etc}/etc /etc
+            ''; };
+            environment.etc.mtab.source = "/proc/mounts"; # (»lib.types.path« only allows absolute targets)
+            systemd.services.systemd-tmpfiles-setup.serviceConfig.ExecStart = [ "" "systemd-tmpfiles --create --remove --boot --exclude-prefix=/dev --exclude-prefix=/etc" ];
+        })
+        (let # Rewrite »activationScripts.users« to remove its dependency on »perl«:
+            getGid = g: toString (lib.my.ifNull g.gid (throw "Group ${g.name} has no GID"));
+            getUid = u: toString (lib.my.ifNull u.uid (throw "User ${u.name} has no UID"));
+            utils = import "${inputs.nixpkgs.outPath}/nixos/lib/utils.nix" { inherit (specialArgs) lib config pkgs; };
+        in {
+            system.activationScripts.users = lib.mkForce "";
+            users.mutableUsers = false; assertions = [ { assertion = config.users.mutableUsers == false; message = "Static user generation is incompatible with »users.mutableUsers = true«."; } ];
+
+            # Statically generate user files:
+            environment.etc.group.text  = "${lib.concatMapStringsSep "\n" (g: (
+                "${g.name}:x:${getGid g}:${lib.concatStringsSep "," g.members}"
+            )) (lib.attrValues config.users.groups)}\n";
+            environment.etc.passwd.text = "${lib.concatMapStringsSep "\n" (u: (
+                "${u.name}:x:${getUid u}:${if lib.my.matches ''[0-9]+$'' u.group then u.group else if config.users.groups?${u.group} then getGid config.users.groups.${u.group} else throw "User ${u.name}'s group ${u.group} does not exist"}:${u.description}:${u.home}:${utils.toShellPath u.shell}"
+            )) (lib.attrValues config.users.users)}\n";
+            environment.etc.shadow = { text = "${lib.concatMapStringsSep "\n" (u: (
+                if u.password != null || u.passwordFile != null then throw "With static user generation, user passwords may only be set as ».hashedPassword« (check user ${u.name})" else
+                "${u.name}:${lib.my.ifNull u.hashedPassword "!"}:1::::::"
+            )) (lib.attrValues config.users.users)}\n"; }; # mode = "640"; gid = config.ids.gids.shadow; }; # A world-readable shadow file kind of defats its own purpose, but systems that use this shouldn't have passwords anyway (and anything written here would already be world-readable in the store anyway).
+
+            # Ensure all users/groups have static IDs. Use »config.ids« as intermediary to make undetected conflicts less likely. (Should scan for duplicates.)
+            ids = { uids = {
+            }; gids = {
+                systemd-coredump = config.ids.uids.systemd-coredump;
+                #shadow = 318; # (reserved but not actually set)
+            }; };
+            users.groups.systemd-coredump.gid = config.ids.gids.systemd-coredump;
         })
         ({
             # Remove »nixos-container«'s dependency on »perl«:
             # The interactive »pkgs.nixos-container« CLI does depend on »perl«, static containers do only by calling that CLI from »ExecReload«.
             boot.interactiveContainers = false;
-            systemd.services = lib.th.mapMerge (name: { "container@${name}".serviceConfig.ExecReload = lib.mkForce ""; }) ([ "" ] ++ (lib.attrNames config.containers));
+            systemd.services = lib.my.mapMerge (name: { "container@${name}".serviceConfig.ExecReload = lib.mkForce ""; }) ([ "" ] ++ (lib.attrNames config.containers));
         })
         ({
             # Shrink »systemd«:
@@ -273,8 +300,6 @@ in {
                 "systemd-hostnamed.service" "dbus-org.freedesktop.hostname1.service" # withHostnamed
             ];
         })
-        ({
-        })
 
 
         ({
@@ -324,7 +349,7 @@ in {
                 configfile = pkgs.stdenv.mkDerivation {
                     inherit (base) version src; pname = "linux-localmodconfig";
                     inherit (base.configfile) depsBuildBuild nativeBuildInputs;
-                    LSMOD = ./lsmod.out; oldConfig = base.configfile;
+                    oldConfig = base.configfile; LSMOD = ./lsmod.out; # (use relative path to ensure th path does not change when some other file in the repo changes)
                     explicit = lib.concatStringsSep " " [ # values to replace after applying »localmodconfig«
                         "CONFIG_CRYPTO_USER_API_HASH=m CONFIG_AUTOFS4_FS=m" # else assertion fails
                     ];

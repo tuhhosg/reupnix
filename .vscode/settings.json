@@ -1,5 +1,5 @@
 {
-	"editor.insertSpaces": true, "editor.tabSize": 4, // (tabs don't work well in nix multiline strings or when pasting bash snippets, so unfortuntely have to use spaces for indention)
+	"editor.insertSpaces": true, "editor.tabSize": 4, "editor.detectIndentation": false, // (tabs don't work well in nix multiline strings or when pasting bash snippets, so unfortuntely have to use spaces for indention)
 
 	"cSpell.diagnosticLevel": "Information", // to find spelling mistakes
 	"cSpell.words": [ // this got a bit out of hand ...
@@ -92,6 +92,7 @@
 		"fmask", // mount option
 		"fmode", // cli arg
 		"foldl", // nix (fold left)
+		"foldr", // nix (fold right)
 		"fontconfig", // package
 		"freedesktop", // organization
 		"freevxfs", // kmod / file system
@@ -130,6 +131,7 @@
 		"importd", // daemon
 		"inetd", // program
 		"inetutils", // package
+		"initialRamdiskSecretAppender", // nixos option
 		"inodes", // plural
 		"inplace", // cli arg
 		"internalcommands", // virtual box
@@ -178,6 +180,7 @@
 		"modifyvm", // virtual box
 		"mountpoint", // program/function
 		"mpris", // abbr
+		"mtab", // file name
 		"multiplatform", // nix
 		"nameserver", // cli arg
 		"nanorc", // file name
@@ -302,10 +305,13 @@
 		"tmpfs", // linux
 		"toplevel", // nix
 		"typecode", // cli arg
+		"tzdata", // pckage
+		"TZDIR", // env var
 		"uart", "uarts", // serial protocol
 		"uartmode", // virtual box
 		"uboot", // program
 		"udev", // program
+		"udevadm", // program
 		"udhcpc", // program
 		"udisks", // program
 		"udisksctl", // program

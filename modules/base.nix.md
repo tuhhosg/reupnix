@@ -9,7 +9,7 @@ Things that really should be (more like) this by default.
 
 ```nix
 #*/# end of MarkDown, beginning of NixOS module:
-{ config, lib, pkgs, specialisation, ... }: let
+dirname: inputs: { config, pkgs, lib, ... }: let inherit (inputs.self) lib; in let
     cfg = config.th.base;
 in {
 

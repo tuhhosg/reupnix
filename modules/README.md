@@ -25,7 +25,7 @@ TODO: documentation
 
 ```nix
 #*/# end of MarkDown, beginning of NixOS module:
-{ config, lib, pkgs, ... }: let
+dirname: inputs: { config, pkgs, lib, ... }: let inherit (inputs.self) lib; in let
     cfg = config.th.${TODO: name};
 in {
 

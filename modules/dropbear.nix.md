@@ -9,7 +9,7 @@ OpenSSH adds ~35MB closure size. Let's try `dropbear` instead!
 
 ```nix
 #*/# end of MarkDown, beginning of NixOS module:
-{ config, lib, pkgs, ... }: let
+dirname: inputs: { config, pkgs, lib, ... }: let inherit (inputs.self) lib; in let
     cfg = config.th.dropbear;
 in {
 
@@ -23,7 +23,8 @@ in {
         environment.systemPackages = (with pkgs; [ dropbear ]);
 
         networking.firewall.allowedTCPPorts = [ 22 ];
-        environment.etc."dropbear/.mkdir".text = "";
+        #environment.etc."dropbear/.mkdir".text = "";
+        environment.etc.dropbear.source = "/run/user/0"; # allow for readonly /etc
 
     }) (lib.mkIf (!cfg.socketActivation) {
 

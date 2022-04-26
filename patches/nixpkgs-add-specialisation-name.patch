@@ -1,0 +1,14 @@
+# Dunno why, but »name« below is not actually defined in this invocation by »types.submodule« ...
+diff --git a/nixos/modules/system/activation/top-level.nix b/nixos/modules/system/activation/top-level.nix
+index b8aeee8c11b..6f8f0015b8f 100644
+--- a/nixos/modules/system/activation/top-level.nix
++++ b/nixos/modules/system/activation/top-level.nix
+@@ -191,7 +191,7 @@ in
+               specialisations will be ignored.
+             '';
+             visible = "shallow";
+-            inherit (extend { modules = [ ./no-clone.nix ]; }) type;
++            inherit (extend { modules = [ ./no-clone.nix ]; specialArgs = { specialisation = local.name or null; }; }) type;
+           };
+         })
+       );

@@ -11,7 +11,7 @@ From the proposed abstract:
 > * provides containers direct access to dedicated hardware
 > * statically configures low-overhead/jitter communication between containers
 
-So far, this uses NixOS to achieve the first tow points -- more to follow.
+So far, this uses NixOS to achieve the first two points -- more to follow.
 
 
 ## Design (so far)
@@ -33,21 +33,20 @@ A brief description of what we currently expect the base OS deployment to look l
 
 This is a nix flake repository, so [`./flake.nix`](./flake.nix) is the entry point and export mechanism for almost everything.
 
-[`./utils/lib.nix`](./utils/lib.nix) adds some additional library functions. The flake passes these into all NixOS modules as `lib.th` argument.
+[`./lib/`](./lib/) adds some additional library functions as `.my` to the default `nixpkgs.lib`. These get passed to all other files as `inputs.self.lib.my`.
 
 [`./hosts/`](./hosts/) contains the main NixOS config modules for each host. Generally, there is one file for each host, but the [flake](./flake.nix) can be instructed to reuse the config for multiple hosts (in which case the module should probably interpret the `name` argument passed to it).
-For implementation reasons, there are some options which have to be set in the first sub-module in these files (`## Hardware` section).
+Any `preface.*` options have to be set in the first sub-module in these files (`## Hardware` section).
 
 [`./modules/`](./modules/) contains NixOS configuration modules. Added options' names start with `th.` (unless they are meant as fixes to the existing options set).
-The modules are inactive by default, and are designed to me mostly independent from each other and the other things in this repo. Some do have dependencies on added or modified packages, other modules in the same directory, or just aren't very useful outside the overall system setup.
-[`./modules/default.nix`](./modules/default.nix) exports an attr set of the modules defined in the individual files, which is also what is exported as `flake#outputs.nixosModules` and merged as `flake#outputs.nixosModule`. Additionally, the added or modified packages are exported as `flake#outputs.packages.<arch>.*`.
+The modules are inactive by default, and are designed to be mostly independent from each other and the other things in this repo. Some do have dependencies on added or modified packages, other modules in the same directory, or just aren't very useful outside the overall system setup.
+[`./modules/default.nix`](./modules/default.nix) exports an attr set of the modules defined in the individual files, which is also what is exported as `flake#outputs.nixosModules` and merged as `flake#outputs.nixosModule`.
 
 [`./overlays/`](./overlays/) contains nixpkgs overlays. Some modify packages from `nixpkgs`, others add packages not in there (yet).
 [`./overlays/default.nix`](./overlays/default.nix) exports an attr set of the overlays defined in the individual files, which is also what is exported as `flake#outputs.overlays` and merged as `flake#outputs.overlay`. Additionally, the added or modified packages are exported as `flake#outputs.packages.<arch>.*`.
 
-[`./utils/`](./utils/) besides some helpers also contains the installation and maintenance script/functions. These are wrapped by the flake to have access to variables describing a specific host, and thus (with few exceptions) shouldn't be called directly.
+[`./utils/`](./utils/) contains the installation and maintenance scripts/functions. These are wrapped by the flake to have access to variables describing a specific host, and thus (with few exceptions) shouldn't be called directly.
 See `apps` and `devShells` exported by the flake, plus the [installation](#installation--initial-setup) section below.
-`utils/{functions.sh,lib.nix}` are currently oversized copies from anther project ...
 
 
 ## Installation / Initial Setup

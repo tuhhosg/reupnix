@@ -1,1 +1,1 @@
-(import ../utils/lib.nix).importModules "${../.}/modules" { }
+dirname: inputs@{ self, nixpkgs, ...}: self.lib.my.importModules inputs dirname { }

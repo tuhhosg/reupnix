@@ -36,12 +36,12 @@ And manage the VM(s) using the UI or the commands printed:
 
 ```nix
 #*/# end of MarkDown, beginning of NixOS config flake input:
-args@{ config, pkgs, lib, inputs, name, ... }: let
-    #suffix = builtins.elemAt (builtins.match ''target-(.*)'' name) 0;
+dirname: inputs: { config, pkgs, lib, name, ... }: let inherit (inputs.self) lib; in let
+    #suffix = builtins.head (builtins.match ''target-(.*)'' name);
 in { imports = [ ({ ## Hardware
-    #th.system.instances = [ ... ];
+    #preface.instances = [ ... ];
 
-    preface.hardware = "x86_64-linux"; system.stateVersion = "22.05";
+    preface.hardware = "x86_64"; system.stateVersion = "22.05";
 
     boot.loader.systemd-boot.enable = true; boot.loader.grub.enable = false;
     th.target.fs.enable = true; th.target.fs.vfatBoot = "/boot";
@@ -55,17 +55,26 @@ in { imports = [ ({ ## Hardware
     networking.nameservers = [ "1.1.1.1" ]; # [ "10.0.2.3" ];
 
 
-})({ ## Different Container Setups as »specialisation«s
+}) ({ ## Different Container Setups as »specialisation«s
 
     th.target.specs.enable = true;
-    specialisation.test1.specialArgs.specialisation = "test1";
-    specialisation.test1.specialArgs.configuration = {
+    specialisation.test1.configuration = {
+        th.target.specs.name = "test1";
         # TODO: the actual differences in this configuration
+
+
     };
 
 }) ({ ## Temporary Test Stuff
 
-    services.getty.autologinUser = "root"; users.users.root.password = "root";
+    imports = [ (lib.mkIf false { # Just to prove that this can be installed very small:
+        installer.disks.primary.size = "256M"; installer.disks.primary.alignment = 8;
+        installer.partitions."boot-${builtins.substring 0 8 (builtins.hashString "sha256" config.networking.hostName)}".size = lib.mkForce "${toString (32 + 1)}M"; # VBox EFI only supports FAT32
+        th.target.fs.dataSize = "1K"; fileSystems."/data" = lib.mkForce { fsType = "tmpfs"; device = "tmpfs"; }; # don't really need /data
+        fileSystems."/system".formatOptions = lib.mkForce "-E nodiscard"; # (remove »-O inline_data«)
+    }) ];
+
+    services.getty.autologinUser = "root"; users.users.root.hashedPassword = "$5$UqX6IreDL98q0PpD$rZRHDlu8LmorOHNCWo/2SQNQewQ.G/r/8XAUNGSxuo2"; # .password = "root";
 
     boot.kernelParams = [ "boot.shell_on_fail" ];
 

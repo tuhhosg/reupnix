@@ -1,1 +1,1 @@
-(import ../utils/lib.nix).importOverlays "${../.}/overlays" { }
+dirname: inputs@{ self, nixpkgs, ...}: self.lib.my.importOverlays inputs dirname { }

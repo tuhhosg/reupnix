@@ -15,7 +15,7 @@ If `$DEVICE` points to something in `/dev/`, then it is directly formatted and w
 
 Once done, the disk can be transferred -- or the image be copied -- to the final system, and should boot there.
 If the hosts hardware target allows, a resulting image can also be passed to [`./functions.sh#register-vbox`](./functions.sh#register-vbox) to create a bootable VirtualBox instance for the current user.
-The "Installation" section of each host's documentation should contain host specific details.
+The "Installation" section of each host's documentation should contain host specific details, if any.
 
 
 ## Implementation
@@ -27,57 +27,20 @@ beQuiet=/dev/null ; if [[ ${debug:=} ]] ; then set -x ; beQuiet=/dev/stdout ; fi
 if [[ "$(id -u)" != '0' ]] ; then echo 'Script must be run in a root (e.g. in a »sudo --preserve-env=SSH_AUTH_SOCK -i«) shell.' ; exit ; fi
 if [[ ${SUDO_USER:-} ]] ; then function nix {( args=("$@") ; su - "$SUDO_USER" -c "$(declare -p args)"' ; nix "${args[@]}"' )} ; fi
 
-: ${1:?"Required: Target disk or image path."}
+: ${1:?"Required: Target disk or image paths."}
 
 if [[ $debug ]] ; then set +e ; set -E ; trap 'code= ; bash -l || code=$? ; if [[ $code ]] ; then exit $code ; fi' ERR ; fi # On error, instead of exiting straight away, open a shell to allow diagnosing/fixing the issue. Only exit if that shell reports failure (e.g. CtrlC + CtrlD). Unfortunately, the exiting has to be repeated for level of each nested sub-shells.
 
 targetSystem=@{config.system.build.toplevel.outPath}
+mnt=/tmp/nixos-install-@{config.networking.hostName} ; mkdir -p "$mnt" ; prepend_trap "rmdir $mnt" EXIT # »mnt=/run/user/0/...« would be more appropriate, but »nixos-install« does not like the »700« permissions on »/run/user/0«
 
 
-## Prepare/ensure Target Block Device
+## Get File Systems Ready
 
-if [[ ! "$1" =~ ^(/dev/.*)$ ]] ; then
-    outFile=$1 ; install -o root -g root -m 640 -T /dev/null "$outFile" ; fallocate -l "@{config.th.setup.imageSize}" "$outFile"
-    blockDev=$(losetup --show -f "$outFile") ; prepend_trap "losetup -d $blockDev" EXIT ; partPrefix=${blockDev}p
-else
-    if [[ ! "$(blockdev --getsize64 "$1")" ]] ; then echo "Target device »$1« does not exist" ; exit 1 ; fi
-    blockDev=$1 ; partPrefix=$(realpath $blockDev) ; if [[ $partPrefix != /dev/sd* ]] ; then partPrefix=${partPrefix}p ; fi
-fi
-
-
-## Create File Systems
-
-mnt=/tmp/nixos-install-@{config.networking.hostName} ; mkdir -p "$mnt" ; prepend_trap "rmdir $mnt" EXIT
-# »mnt=/run/user/0/...« would be more appropriate, but »nixos-install« does not like the »700« permissions on »/run/user/0«
-
-( # partitioning and formatting as per »config.th.target.fs.enable = true«
-    padSize=16384    #   8MiB / 512 # (GPT + alignment, maybe also firmware part)
-    bootSize=131072  #  64MiB / 512 # (if at all possible, we want to get rid of this anyway)
-    systemSize=$(( $(blockdev --getsize64 "$blockDev") / 512 / 2 )) # 50% of overall size
-    printf "
-        o;y                              # new GPT ; confirm
-        n;1                              # new ; primary ; part1
-            $((padSize));$((padSize + bootSize - 1))  # start ; end
-            ef00                         # type: EFI system partition
-        n;2                              # new ; primary ; part2
-            $((padSize + bootSize));$((padSize + bootSize + systemSize - 1))  # start ; end
-            8300                         # type: Linux filesystem
-        n;3                              # new ; primary ; part3
-            $((padSize + bootSize + systemSize));-$((padSize + 1))  # start ; all (but)
-            8300                         # type: Linux filesystem
-        p;w;y                            # print ; write ; confirm
-    " | perl -pe 's/^ *| *#.*$//g' | perl -pe 's/; */\n/g' | gdisk "$blockDev" >$beQuiet
-    partprobe "$blockDev" ; sleep 1
-
-    shortHash=@{config.th.setup.hostHash:0:8}
-    mkfs.fat  -F 32                          -n     bt-"$shortHash" "${partPrefix}1"
-    mkfs.ext4 -F -O inline_data -E nodiscard -L system-"$shortHash" "${partPrefix}2"
-    mkfs.ext4 -F -O inline_data -E nodiscard -L   data-"$shortHash" "${partPrefix}3"
-    partprobe "$blockDev" ; sleep 1
-)
-
-mount-system $mnt $targetSystem/etc/fstab ; prepend_trap "unmount-system $mnt $targetSystem/etc/fstab" EXIT # this should also support mounting a tmpfs on /, $rootPart on /.keep/ (or something), and bind mounting folders similar to the ZFS setup (all specified in fstab)
-
+partition-disks "$1"
+format-partitions
+# ... block layers would go here ...
+mount-system $mnt ; prepend_trap "unmount-system $mnt" EXIT
 ( set -x ; tree -a -p -g -u -s -D -F --timefmt "%Y-%m-%d %H:%M:%S" $mnt )
 
 
@@ -92,11 +55,11 @@ for dir in dev/ sys/ run/ ; do mkdir -p $mnt/$dir ; mount tmpfs -t tmpfs $mnt/$d
 mkdir -p -m 755 $mnt/nix/var ; mkdir -p -m 1775 $mnt/nix/store
 if [[ ${SUDO_USER:-} ]] ; then chown $SUDO_USER: $mnt/nix/store $mnt/nix/var ; fi
 
-( set -x ; time nix copy --no-check-sigs --to $mnt $targetSystem )
+( set -x ; time nix copy --no-check-sigs --to $mnt @{config.th.minify.topLevel.outPath:-$targetSystem} )
 ln -sT $(realpath $targetSystem) $mnt/run/current-system
 
-if [[ $(cat /run/current-system/system || echo "x86_64-linux") != "@{config.preface.hardware}" ]] ; then # cross architecture installation
-    mkdir -p $mnt/run/binfmt ; cp -a {,$mnt}/run/binfmt/"@{config.preface.hardware}"
+if [[ $(cat /run/current-system/system 2>/dev/null || echo "x86_64-linux") != "@{config.preface.hardware}"-linux ]] ; then # cross architecture installation
+    mkdir -p $mnt/run/binfmt ; cp -a {,$mnt}/run/binfmt/"@{config.preface.hardware}" || true
     # Ubuntu (by default) expects the "interpreter" at »/usr/bin/qemu-@{config.preface.hardware/-linux/}-static«.
 fi
 
@@ -104,7 +67,7 @@ if [[ ${SUDO_USER:-} ]] ; then chown -R root:root $mnt/nix ; chown :30000 $mnt/n
 
 mount -o bind /nix/store $mnt/nix/store # all the things required to _run_ the system are copied, but (may) need some more things to initially install it
 mkdir -p $mnt/boot/EFI/{systemd,BOOT}/ # systemd-boot needs these to exist already
-code=0 ; TMPDIR=/tmp LC_ALL=C nixos-install --system $targetSystem --no-root-passwd --no-channel-copy --root $mnt --no-bootloader && nixos-enter --root $mnt -c "@{config.system.build.installBootLoader.outPath} $targetSystem" || code=$? #--debug
+code=0 ; TMPDIR=/tmp LC_ALL=C nixos-install --system @{config.th.minify.topLevel.outPath:-$targetSystem} --no-root-passwd --no-channel-copy --root $mnt --no-bootloader && nixos-enter --root $mnt -c "@{config.system.build.installBootLoader.outPath} $targetSystem" || code=$? #--debug
 umount -l $mnt/nix/store
 
 if (( code != 0 )) ; then
