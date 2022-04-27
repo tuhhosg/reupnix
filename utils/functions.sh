@@ -87,9 +87,9 @@ function format-partitions {( set -eu
         eval "$fsDecl" # _name ; _device ; _fsType ; _formatOptions ; ...
         if [[ $_device != /dev/disk/by-partlabel/* ]] ; then exit ; fi # i.e. continue
         blockDev=$(realpath "$_device") ;  if [[ $blockDev == /dev/sd* ]] ; then
-            blockDev=$( shopt -s extglob ; echo "${blockDev%%+([0-9])}")
+            blockDev=$( shopt -s extglob ; echo "${blockDev%%+([0-9])}" )
         else
-            blockDev=$( shopt -s extglob ; echo "${blockDev%%p+([0-9])}")
+            blockDev=$( shopt -s extglob ; echo "${blockDev%%p+([0-9])}" )
         fi
         if [[ ' '"${blockDevs[@]}"' ' != *' '"$blockDev"' '* ]] ; then echo "Partition alias $_device does not point at one of the target disks ${blockDevs[@]}" ; exit 1 ; fi
         mkfs.${_fsType} ${_formatOptions} "${_device}" >$beQuiet
@@ -104,7 +104,7 @@ function mount-system {( set -eu # 1: mnt, 2?: fstabPath
     <$fstabPath grep -v '^#' | LC_ALL=C sort -k2 | while read source target type options numbers ; do
         if [[ ! $target || $target == none ]] ; then continue ; fi
         options=,$options, ; options=${options//,ro,/,}
-        if [[ $options =~ ,r?bind, ]] ; then continue ; fi # TODO: also rbind?
+        if [[ $options =~ ,r?bind, ]] || [[ $type == overlay ]] ; then continue ; fi
         if ! mountpoint -q "$mnt"/"$target" ; then
             mkdir -p "$mnt"/"$target"
             mount -t $type -o "${options:1:(-1)}" "$source" "$mnt"/"$target"
@@ -114,10 +114,16 @@ function mount-system {( set -eu # 1: mnt, 2?: fstabPath
     <$fstabPath grep -v '^#' | LC_ALL=C sort -k2 | while read source target type options numbers ; do
         if [[ ! $target || $target == none ]] ; then continue ; fi
         options=,$options, ; options=${options//,ro,/,}
-        if [[ ! $options =~ ,r?bind, ]] ; then continue ; fi # TODO: also rbind?
+        if [[ $options =~ ,r?bind, ]] || [[ $type == overlay ]] ; then : ; else continue ; fi
         if ! mountpoint -q "$mnt"/"$target" ; then
             mkdir -p "$mnt"/"$target"
-            source=$mnt/$source ; if [[ ! -e $source ]] ; then mkdir -p "$source" ; fi
+            if [[ $type == overlay ]] ; then
+                options=${options//,workdir=/,workdir=$mnt\/} ; options=${options//,upperdir=/,upperdir=$mnt\/} # work and upper dirs must be in target, lower dirs are probably store paths
+                workdir=$(<<<"$options" grep -o -P ',workdir=\K[^,]+' || true) ; if [[ $workdir ]] ; then mkdir -p "$workdir" ; fi
+                upperdir=$(<<<"$options" grep -o -P ',upperdir=\K[^,]+' || true) ; if [[ $upperdir ]] ; then mkdir -p "$upperdir" ; fi
+            else
+                source=$mnt/$source ; if [[ ! -e $source ]] ; then mkdir -p "$source" ; fi
+            fi
             mount -t $type -o "${options:1:(-1)}" "$source" "$mnt"/"$target"
         fi
     done

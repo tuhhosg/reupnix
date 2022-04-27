@@ -8,6 +8,7 @@
 
     # To update »./flake.lock«: $ nix flake update
     nixpkgs = { url = "github:NixOS/nixpkgs/nixos-unstable"; }; # Upgrading from bc4b9eef3ce3d5a90d8693e8367c9cbfc9fc1e13 to fd364d268852561223a5ada15caad669fd72800e broke systemd-boot (didn't copy EFI files to /boot)
+    #rootfs-ubuntu-server = { url = ".../images/local/ubuntu-server"; flake = false; }; # see instructions at use site, then set absolute path and uncomment
 
 }; outputs = inputs: let patches = {
 

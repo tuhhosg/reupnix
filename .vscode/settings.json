@@ -12,7 +12,7 @@
 		"analogix", // kmod
 		"anyprot", // option
 		"askpass", // program
-		"attrset", // nix/abbr (attribute set)
+		"attrset", "attrsets", // nix/abbr (attribute set)
 		"authtok", // cli arg
 		"AUTOFS4", // kernel config
 		"autologin", // agetty
@@ -61,6 +61,7 @@
 		"deduplicates", // 3ps od deduplicate
 		"deduplication", // word
 		"deps", // abbr dependencies
+		"devs", // abbr (devices)
 		"dhcpcd", // programm
 		"dirlinks", // cli arg
 		"dmask", // mount option
@@ -80,6 +81,7 @@
 		"erofs", // kmod / file system
 		"ethernet", // word
 		"exofs", // kmod / file system
+		"extglob", // cli arg
 		"extlinux", // program
 		"faketcp", // cli arg
 		"fallocate", // program / function
@@ -102,12 +104,14 @@
 		"fusermount", // program
 		"gamemode", // program
 		"gconv", // library
+		"gcroots", // nix
 		"gdisk", // program
 		"getsize64", // cli arg
 		"getty", // serice
 		"gids", // abbr/plural (group IDs)
 		"gnugrep", // package
 		"gnupg", // program
+		"gollenstede", // name
 		"gparted", // program
 		"gpio", // abbr (general purpose IO)
 		"gptfdisk", // program
@@ -165,6 +169,8 @@
 		"lowerdir", // mount overlay option
 		"luks", // linux
 		"lusb", // cli arg
+		"machinectl", // program
+		"macvlans", // linux
 		"mbuffer", // program
 		"mdns", // abbr
 		"mgmt", // abbr (management)
@@ -189,6 +195,7 @@
 		"netrom", // kmod
 		"nettools", // package
 		"networkd", // daemon
+		"niklas", // name
 		"nilfs2", // kmod / file system
 		"NIXCFG", // abbr
 		"nixos", // (duh)
@@ -201,6 +208,7 @@
 		"nofail", // cli arg
 		"nogroup", // linux
 		"nologin", // function / program
+		"noninteractive", // cli arg
 		"NOPASSWD", // sudoers
 		"noprofile", // cli arg
 		"notrunc", // cli arg
@@ -217,6 +225,8 @@
 		"oomd", // daemon (out of memory)
 		"optimise", // them brits
 		"ostype", // virtual box
+		"overlayed", // word
+		"overlayfs", // linux
 		"pactl", // program
 		"panfrost", // knod
 		"partlabel", // linux
@@ -232,6 +242,7 @@
 		"portcount", // virtual box
 		"postgres", // program
 		"poweroff", // program / function
+		"prefetch", // word
 		"probs", // abbr (probably)
 		"prometheus", // program
 		"proto", // abbr (protocol)
@@ -252,6 +263,7 @@
 		"rhosts", // linux
 		"rockchip", // hardware
 		"rockchipdrm", // kmod
+		"rootfs", // abbr (root file system)
 		"rpiboot", // package
 		"rpicm4", // abbr (Raspberry PI Compute Module 4)
 		"rpool", // zfs
@@ -268,6 +280,7 @@
 		"setuid", // linux
 		"sgdisk", // program
 		"showvminfo", // virtual box
+		"SIGRTMIN", // linux
 		"sigs", // cli arg
 		"skel", // abbr (skeleton (directory))
 		"smartmontools", // package
@@ -287,6 +300,7 @@
 		"swapon", // program / function
 		"swraid", // nixos option
 		"syncoid", // program
+		"systemd-nspawn", // program
 		"sysv", // kmod
 		"tabsize", // option
 		"tabstospaces", // option
@@ -331,6 +345,7 @@
 		"userns", // linux
 		"utillinux", // package
 		"vboxusers", // virtual box
+		"veth", "veths", // linux
 		"vfat", // linux
 		"vhost", "vhosts", // abbr (virtual host)
 		"virtualbox", // program

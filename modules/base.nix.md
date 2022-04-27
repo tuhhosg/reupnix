@@ -35,6 +35,27 @@ in {
         # might additionally want to do this: https://stackoverflow.com/questions/62083796/automatic-reboot-on-systemd-emergency-mode
         systemd.extraConfig = "StatusUnitFormat=name";
 
+    }) ({
+        # Free convenience:
+
+        # The non-interactive version of bash does not remove »\[« and »\]« from PS1. Seems to work just fine without those. So make the prompt pretty (and informative):
+        programs.bash.promptInit = ''
+            # Provide a nice prompt if the terminal supports it.
+            if [ "''${TERM:-}" != "dumb" ] ; then
+                if [[ "$UID" == '0' ]] ; then if [[ ! "''${SUDO_USER:-}" ]] ; then # direct root: red username + green hostname
+                    PS1='\e[0m\e[48;5;234m\e[96m$(printf "%-+ 4d" $?)\e[93m[\D{%Y-%m-%d %H:%M:%S}] \e[91m\u\e[97m@\e[92m\h\e[97m:\e[96m\w'"''${TERM_RECURSION_DEPTH:+\e[91m["$TERM_RECURSION_DEPTH"]}"'\e[24;97m\$ \e[0m'
+                else # sudo root: red username + red hostname
+                    PS1='\e[0m\e[48;5;234m\e[96m$(printf "%-+ 4d" $?)\e[93m[\D{%Y-%m-%d %H:%M:%S}] \e[91m\u\e[97m@\e[91m\h\e[97m:\e[96m\w'"''${TERM_RECURSION_DEPTH:+\e[91m["$TERM_RECURSION_DEPTH"]}"'\e[24;97m\$ \e[0m'
+                fi ; else # other user: green username + green hostname
+                    PS1='\e[0m\e[48;5;234m\e[96m$(printf "%-+ 4d" $?)\e[93m[\D{%Y-%m-%d %H:%M:%S}] \e[92m\u\e[97m@\e[92m\h\e[97m:\e[96m\w'"''${TERM_RECURSION_DEPTH:+\e[91m["$TERM_RECURSION_DEPTH"]}"'\e[24;97m\$ \e[0m'
+                fi
+                if test "$TERM" = "xterm" ; then
+                    PS1="\033]2;\h:\u:\w\007$PS1"
+                fi
+            fi
+            export TERM_RECURSION_DEPTH=$(( 1 + ''${TERM_RECURSION_DEPTH:-0} ))
+        '';
+
     }) ]);
 
 }

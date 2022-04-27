@@ -104,6 +104,10 @@ in {
             # The system won't be able to update/change itself.
             nix.enable = false;
             system.disableInstallerTools = true;
+            systemd.tmpfiles.rules = [ # »nixos-containers«/»config.containers« expect these to exist and fail to stat without
+                ''f  "/nix/var/nix/db"             0440  root root  -''
+                ''f  "/nix/var/nix/daemon-socket"  0440  root root  -''
+            ];
         })
         ({
             # Remove »switch-to-configuration«:

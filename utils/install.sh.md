@@ -40,8 +40,8 @@ mnt=/tmp/nixos-install-@{config.networking.hostName} ; mkdir -p "$mnt" ; prepend
 partition-disks "$1"
 format-partitions
 # ... block layers would go here ...
-mount-system $mnt ; prepend_trap "unmount-system $mnt" EXIT
-( set -x ; tree -a -p -g -u -s -D -F --timefmt "%Y-%m-%d %H:%M:%S" $mnt )
+prepend_trap "unmount-system $mnt" EXIT ; mount-system $mnt
+if [[ $debug ]] ; then ( set -x ; tree -a -p -g -u -s -D -F --timefmt "%Y-%m-%d %H:%M:%S" $mnt ) ; fi
 
 
 ## Copy Config + Keys

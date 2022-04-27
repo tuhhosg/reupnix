@@ -62,10 +62,48 @@ in { imports = [ ({ ## Hardware
         th.target.specs.name = "test1";
         # TODO: the actual differences in this configuration
 
-
     };
 
+    th.target.containers.enable = true;
+    th.target.containers.containers.native = {
+        modules = [ ({ config, pkgs, ... }: {
+
+            systemd.services.http = {
+                serviceConfig.ExecStart = "${pkgs.busybox}/bin/httpd -f -v -p 8000 -h ${pkgs.writeTextDir "index.html" ''
+                    <!DOCTYPE html>
+                    <html><head></head><body>YAY</body></html>
+                ''}";
+                wantedBy = [ "multi-user.target" ];
+                serviceConfig.Restart = "always"; serviceConfig.RestartSec = 5; unitConfig.StartLimitIntervalSec = 0;
+                serviceConfig.DynamicUser = "yes";
+            };
+            networking.firewall.allowedTCPPorts = [ 8000 ];
+
+        }) ];
+        sshKeys.root = [ (lib.readFile "${dirname}/../res/ssh_dummy_1.pub") ]; # ssh -o "IdentitiesOnly=yes" -i res/ssh_dummy_1 target -> root@native
+    };
+    th.target.containers.containers.foreign = {
+        rootFS = [
+            # printf 'FROM ubuntu:20.04 \nRUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y ubuntu-server busybox' | docker build --pull -t local/ubuntu-server -
+            # ( image=local/ubuntu-server ; set -eux ; id=$(docker container create ${image/_\//}) ; trap "docker rm --volumes $id" EXIT ; rm -rrf ../images/$image ; mkdir -p ../images/$image ; cd ../images/$image ; docker export $id | pv | tar x )
+            inputs.rootfs-ubuntu-server
+            (pkgs.runCommandLocal "layer-prepare-systemd" { } ''
+                mkdir -p $out
+                ln -sT /usr/lib/systemd/systemd $out/init
+
+                mkdir -p $out/etc/systemd/system/
+                printf '[Service]\nExecStart=/bin/busybox httpd -f -v -p 8001 -h /web-root/\n' > $out/etc/systemd/system/http.service
+                mkdir -p $out/etc/systemd/system/multi-user.target.wants
+                ln -sT ../http.service $out/etc/systemd/system/multi-user.target.wants/http.service
+                mkdir -p $out/web-root/ ; printf '<!DOCTYPE html>\n<html><head></head><body>YAY</body></html>\n' > $out/web-root/index.html
+            '')
+        ];
+    };
+
+
 }) ({ ## Temporary Test Stuff
+
+    environment.systemPackages = [ pkgs.curl pkgs.nano ];
 
     imports = [ (lib.mkIf false { # Just to prove that this can be installed very small:
         installer.disks.primary.size = "256M"; installer.disks.primary.alignment = 8;
@@ -74,7 +112,7 @@ in { imports = [ ({ ## Hardware
         fileSystems."/system".formatOptions = lib.mkForce "-E nodiscard"; # (remove »-O inline_data«)
     }) ];
 
-    services.getty.autologinUser = "root"; users.users.root.hashedPassword = "$5$UqX6IreDL98q0PpD$rZRHDlu8LmorOHNCWo/2SQNQewQ.G/r/8XAUNGSxuo2"; # .password = "root";
+    services.getty.autologinUser = "root"; users.users.root.hashedPassword = "${lib.my.removeTailingNewline (lib.readFile "${dirname}/../res/root-sha256.pass")}"; # .password = "root";
 
     boot.kernelParams = [ "boot.shell_on_fail" ];
 
@@ -87,7 +125,7 @@ in { imports = [ ({ ## Hardware
 
     #services.openssh.enable = true;
     th.dropbear.enable = true;
-    th.dropbear.rootKeys = [ "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQC+y3pbsUopXWSWVz+sowoMPTWv+u9Qj9aEl20NUN1LrKxduUv/fijmOyui92ZdTYJEu1oa5+V5jbxxlqNDn51yuwXXCxnIwFgh/aSl34Mc86HrjH73kZonya26jfCBE/7Mn9rppUmpkTt0Dk13Y1gnKp0OvuukEQ+Fa5ZxPLtyZ9d3zYDKIBbwNhISOHlllj8jgEMgGNNDGS7EdFh9AEnKG9d8s4+zTlHEXTom0srr4GBrRcG8qlV6DEcHB/aS7hhI5lA79H9AFWd1PjTV7ZUvX9sLsfRitcmQy2psicDxlagA15Lm/pLuf11t+IIO6bv9EG1cCAvkrGqnGqHLCPFYIW0rKyxD2IRq1ZG4+sbyQlgJiACw1WPiJkOXK88hmjlvwKGx4i8bk2bkXgcmxEHtd0rl+zsSMaZnNltaaGae7DVPKEYhn/sx+hzPpdpz7nhNs/OmN1Y61Zi8J8NHyBKWJ+lQSpV7AY8f2VNKvTFPdXzZmTYd4xVd7saGCa9235oqHX54rZ2zXZaj24zncnxhsvvKkLHeeYbr8knSZNDVfqCCzrm6FTV8aQ5M+QJwfnjVW+TQ/2hEnM1Jb4qbAylJfGY+LHZC9tysRyMwStvnB2+td4HX4hjO75CWbDsW6RLsXQjuzMNAwcGhftA9rnV8azIVX9PD4FYSadPptwuOsw== gpg_rsa.niklas@gollenstede.net" ];
+    th.dropbear.rootKeys = [ ''${lib.readFile "${dirname}/../res/niklas-gollenstede.pub"}'' ];
 
 
 })  ]; }

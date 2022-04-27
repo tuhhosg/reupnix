@@ -51,7 +51,7 @@ in {
     }) ({
         # Mount a tmpfs as root, and (currently) only the nix-store from a system partition:
 
-        fileSystems."/"             = { fsType  =  "tmpfs";    device = "tmpfs"; neededForBoot = implied; };
+        fileSystems."/"             = { fsType  =  "tmpfs";    device = "tmpfs"; neededForBoot = implied; options = [ "mode=755" ]; };
 
         installer.partitions."system-${hash}" = { type = "8300"; size = null; order = 500; };
         fileSystems."/system"       = { fsType  =   "ext4";    device = "/dev/disk/by-partlabel/system-${hash}"; neededForBoot = true; options = [ "noatime" ]; formatOptions = "-O inline_data -E nodiscard"; };
