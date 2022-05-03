@@ -33,7 +33,7 @@ in rec {
         lib           = import "${repoPath}/lib"      "${repoPath}/lib"      inputs;
     } else { }) // (if builtins.pathExists "${repoPath}/overlays/default.nix" then rec {
         overlays      = import "${repoPath}/overlays" "${repoPath}/overlays" inputs;
-        overlay       = final: prev: builtins.foldl' (prev: overlay: overlay final prev) prev (builtins.attrValues overlays); # (I think this should work)
+        overlay       = final: prev: builtins.foldl' (prev: overlay: prev // (overlay final prev)) prev (builtins.attrValues overlays);
     } else { }) // (if builtins.pathExists "${repoPath}/modules/default.nix" then rec {
         nixosModules  = import "${repoPath}/modules"  "${repoPath}/modules"  inputs;
         nixosModule   = { imports = builtins.attrValues nixosModules; };
@@ -45,7 +45,7 @@ in rec {
     );
 
     # Given a path to a host config file, returns some properties defined in its first inline module (to be used where accessing them via »nodes.${name}.config...« isn't possible).
-    getSystemPreface = entryPath: args: let
+    getSystemPreface = inputs: entryPath: args: let
         imported = (importWrapped inputs entryPath) ({ config = null; pkgs = null; lib = null; name = null; nodes = null; } // args);
         module = builtins.elemAt imported.imports 0; props = module.preface;
     in if (
@@ -55,7 +55,7 @@ in rec {
     # Builds the System Configuration for a single host. Since each host depends on the context of all other host (in the same "network"), this is essentially only callable through »mkNixosConfigurations«.
     # See »mkSystemsFalke« for documentation of the arguments.
     mkNixosConfiguration = args@{ name, entryPath, peers, inputs, overlays, modules, nixosSystem, localSystem ? null, ... }: let
-        preface = (getSystemPreface entryPath ({ inherit lib; } // specialArgs));
+        preface = (getSystemPreface inputs entryPath ({ inherit lib; } // specialArgs));
         targetSystem = "${preface.hardware}-linux"; buildSystem = if localSystem != null then localSystem else targetSystem;
         specialArgs = (args.specialArgs or { }) // { # make these available in the attrSet passed to the modules
             inherit name; nodes = peers; # NixOPS
@@ -96,7 +96,7 @@ in rec {
         in { inherit name; value = entryPath; }) files));
 
         configs = mapMerge (name: entryPath: (let
-            preface = (getSystemPreface entryPath { });
+            preface = (getSystemPreface inputs entryPath { });
         in (mapMerge (name: {
             "${name}" = mkNixosConfiguration ((
                 builtins.removeAttrs args [ "files" "dir" "exclude" ]
@@ -115,22 +115,26 @@ in rec {
     # Builds a system of NixOS hosts and exports them plus managing functions as flake outputs.
     # All arguments are optional, as long as the default can be derived from the other arguments as passed.
     mkSystemsFalke = args@{
-        # Arguments »{ files, dir, exclude, }« to »mkNixosConfigurations«, see there for details. May also be a list of those attrsets, in which case those multiple sets of hosts will be built separately by »mkNixosConfigurations«, allowing for separate sets of »peers« passed to »mkNixosConfiguration«. Each call will receive all other arguments, and the resulting sets of hosts will be merged.
-        systems ? ({ dir = "${configPath}/hosts/"; exclude = [ ]; }),
-        # List of overlays to set as »config.nixpkgs.overlays«. Defaults to the ».overlay(s)« of all »inputs« (incl. »inputs.self«).
-        overlays ? (builtins.concatLists (map (input: if input?overlay then [ input.overlay ] else if input?overlays then builtins.attrValues input.overlays else [ ]) (builtins.attrValues inputs))),
-        # List of Modules to import for all hosts, in addition to the default ones in »nixpkgs«. The host-individual module should selectively enable these. Defaults to all »inputs«' ».nixosModule(s)« (including »inputs.self.nixosModule(s)«).
-        modules ? (map (input: input.nixosModule or (if input?nixosModules then { imports = builtins.attrValues input.nixosModules; } else { })) (builtins.attrValues (builtins.removeAttrs inputs [ "nixpkgs" ]))),
-        # Additional arguments passed to each module evaluated for the host config (if that module is defined as a function).
-        specialArgs ? { },
-        # List of bash scripts defining functions that do installation and maintenance operations. See »apps« below for more information.
-        scripts ? [ ],
         # An attrset of imported Nix flakes, for example the argument(s) passed to the flake »outputs« function. All other arguments are optional (and have reasonable defaults) if this is provided and contains »self« and the standard »nixpkgs«. This is also the second argument passed to the individual host's top level config files.
         inputs ? { },
         # Root path of the NixOS configuration. »./.« in the »flake.nix«
         configPath ? inputs.self.outPath,
-        # The function of that name as defined in »nixpkgs/flake.nix«, or equivalent.
-        nixosSystem ? lib.attrByPath [ "lib" "nixosSystem" ] inputs.nixpkgs.lib.nixosSystem specialArgs,
+        # Arguments »{ files, dir, exclude, }« to »mkNixosConfigurations«, see there for details. May also be a list of those attrsets, in which case those multiple sets of hosts will be built separately by »mkNixosConfigurations«, allowing for separate sets of »peers« passed to »mkNixosConfiguration«. Each call will receive all other arguments, and the resulting sets of hosts will be merged.
+        systems ? ({ dir = "${configPath}/hosts/"; exclude = [ ]; }),
+        # List of overlays to set as »config.nixpkgs.overlays«. Defaults to the ».overlay(s)« of all »overlayInputs«/»inputs« (incl. »inputs.self«).
+        overlays ? (builtins.concatLists (map (input: if input?overlay then [ input.overlay ] else if input?overlays then builtins.attrValues input.overlays else [ ]) (builtins.attrValues overlayInputs))),
+        # (Subset of) »inputs« that »overlays« will be used from. Example: »{ inherit (inputs) self flakeA flakeB; }«.
+        overlayInputs ? inputs,
+        # List of Modules to import for all hosts, in addition to the default ones in »nixpkgs«. The host-individual module should selectively enable these. Defaults to all »ModuleInputs«/»inputs«' ».nixosModule(s)« (including »inputs.self.nixosModule(s)«).
+        modules ? (map (input: input.nixosModule or (if input?nixosModules then { imports = builtins.attrValues input.nixosModules; } else { })) (builtins.attrValues moduleInputs)),
+        # (Subset of) »inputs« that »modules« will be used from. (The standard) »nixpkgs« does not export any (useful) modules, since the actual modules are included by default by »nixosSystem«.
+        moduleInputs ? (builtins.removeAttrs inputs [ "nixpkgs" ]),
+        # Additional arguments passed to each module evaluated for the host config (if that module is defined as a function).
+        specialArgs ? { },
+        # List of bash scripts defining functions that do installation and maintenance operations. See »apps« below for more information.
+        scripts ? [ ],
+        # The function of that name as defined in »<nixpkgs>/flake.nix«, or equivalent.
+        nixosSystem ? inputs.nixpkgs.lib.nixosSystem,
         # If provided, then cross compilation is enabled for all hosts whose target architecture is different from this. Since cross compilation currently fails for (some stuff in) NixOS, better don't set »localSystem«. Without it, building for other platforms works fine (just slowly) if »boot.binfmt.emulatedSystems« is configured on the building system for the respective target(s).
         localSystem ? null,
     ... }: let
@@ -138,14 +142,14 @@ in rec {
         nixosConfigurations = if builtins.isList systems then mergeAttrs (map (systems: mkNixosConfigurations (otherArgs // systems)) systems) else mkNixosConfigurations (otherArgs // systems);
     in {
         inherit nixosConfigurations;
-    } // (if scripts == [ ] then { } else forEachSystem [ "aarch64-linux" "x86_64-linux" ] (localSystem: let
+    } // (forEachSystem [ "aarch64-linux" "x86_64-linux" ] (localSystem: let
         pkgs = (import inputs.nixpkgs { inherit overlays; system = localSystem; });
         nix_wrapped = pkgs.writeShellScriptBin "nix" ''exec ${pkgs.nix}/bin/nix --extra-experimental-features nix-command "$@"'';
-    in {
+    in (if scripts == [ ] then { } else {
 
         # E.g.: $ nix run .#$target -- install-system /tmp/system-$target.img
         # E.g.: $ nix run /etc/nixos/#$(hostname) -- sudo
-        # If the first argument (after  »--«) is »sudo«, then the program will re-execute itself with sudo as root (minus the first »sudo« argument).
+        # If the first argument (after  »--«) is »sudo«, then the program will re-execute itself with sudo as root (minus that »sudo« argument).
         # If the first/next argument is »bash«, it will execute an interactive shell with the variables and functions sourced (largely equivalent to »nix develop .#$host«).
         apps = lib.mapAttrs (name: system: let
             appliedScripts = substituteLazy { inherit pkgs scripts; context = system; };
@@ -194,6 +198,8 @@ in rec {
                 PS1=''${PS1/\\$/\\[\\e[93m\\](${name})\\[\\e[97m\\]\\$}
             '';
         })) nixosConfigurations;
+
+    }) // {
 
         packages.all-systems = pkgs.stdenv.mkDerivation { # dummy that just pulls in all system builds
             name = "all-systems"; src = ./.; installPhase = ''

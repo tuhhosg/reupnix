@@ -38,8 +38,8 @@ TODO: documentation
 
 ```nix
 #*/# end of MarkDown, beginning of NixPkgs overlay:
-final: prev: let
-    inherit (final) pkgs lib;
+dirname: inputs: final: prev: let
+    inherit (final) pkgs; inherit (inputs.self) lib;
 in {
 
     # e.g.: add a patched version of a package (use the same name to replace)

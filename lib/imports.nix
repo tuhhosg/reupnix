@@ -64,6 +64,11 @@ in rec {
     # Used in a »default.nix« and called with the »dir« it is in, imports all overlays in that directory as attribute set. See »importFilteredFlattened« and »couldBeOverlay« for details.
     importOverlays = inputs: dir: opts: importFilteredFlattened dir inputs (opts // { filter = couldBeOverlay; });
 
+    # Imports »inputs.nixpkgs« and instantiates it with all ».overlay(s)« provided by »inputs.*«.
+    importPkgs = inputs: args: import inputs.nixpkgs ({
+        overlays = builtins.concatLists (map (input: if input?overlay then [ input.overlay ] else if input?overlays then builtins.attrValues input.overlays else [ ]) (builtins.attrValues inputs));
+    } // args);
+
     # Given a list of »overlays« and »pkgs« with them applied, returns the subset of »pkgs« that was directly modified by the overlays.
     getModifiedPackages = pkgs: overlays: let
         names = builtins.concatLists (map (overlay: builtins.attrNames (overlay { } { })) (builtins.attrValues overlays));

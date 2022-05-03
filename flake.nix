@@ -32,7 +32,7 @@ in let
 
 in (lib.my.forEachSystem [ "aarch64-linux" "x86_64-linux" ] (localSystem: { # And here are the outputs:
     # per architecture
-    packages = /* (lib.my.getModifiedPackages (importPkgs { system = localSystem; }) overlays) // */ systemsFlake.packages.${localSystem};
+    packages = (lib.my.getModifiedPackages (lib.my.importPkgs inputs { system = localSystem; }) overlays) // systemsFlake.packages.${localSystem};
     defaultPackage = systemsFlake.packages.${localSystem}.all-systems;
     apps = systemsFlake.apps.${localSystem}; devShells = systemsFlake.devShells.${localSystem};
 }) // ({
