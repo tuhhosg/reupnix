@@ -101,7 +101,8 @@ in {
         removeNix = ({
             description = ''Disable/exclude Nix: The system won't be able to update/change itself.'';
             nix.enable = false;
-            system.extraSystemBuilderCmds = lib.mkAfter ''rm -f $out/config'';
+            #system.extraSystemBuilderCmds = lib.mkAfter ''rm -f $out/config'';
+            system.extraSystemBuilderCmds = lib.mkForce ""; # For output path stability (the path not changing unless something actually changed) it is important to not just remove this from the build output but also to not even include it in the input. Without this, changes in the input sources do not immediately cause the toplevel derivation to change.
             system.disableInstallerTools = true;
             systemd.tmpfiles.rules = [ # »nixos-containers«/»config.containers« expect these to exist and fail to stat without
                 ''f  "/nix/var/nix/db"             0440  root root  -''

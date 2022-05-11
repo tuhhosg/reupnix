@@ -83,7 +83,7 @@ in { imports = [ ({ ## Hardware
         }) ];
         sshKeys.root = [ (lib.readFile "${dirname}/../res/ssh_dummy_1.pub") ]; # ssh -o "IdentitiesOnly=yes" -i res/ssh_dummy_1 target -> root@native
     };
-    th.target.containers.containers.foreign = {
+    th.target.containers.containers.foreign = lib.mkIf false { # (remove the dependency on this while working on other stuff)
         rootFS = [
             # How to get a rootfs layer:
             # First, find or build an appropriate image:

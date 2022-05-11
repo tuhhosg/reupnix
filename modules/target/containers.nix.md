@@ -68,9 +68,9 @@ in {
                 # Setting »nixpkgs.pkgs = pkgs« would mean that all overlays that happen to be applied to the host »pkgs« (either directly at instantiation or via »config.nixpkgs.overlays«) are applied to the »pkgs« argument passed to all container modules.
                 # But just because the host has an overlay applied does not mean that the container should also have it -- if it does, it should be applied again by including and enabling the respective module.
                 # Also, applying overlays twice (when importing the same module again) is often, but not necessarily a no-op.
-                nixpkgs.overlays = (builtins.concatLists (map (input: if input?overlay then [ input.overlay ] else if input?overlays then builtins.attrValues input.overlays else [ ]) (builtins.attrValues inputs)));
+                nixpkgs.overlays = (builtins.concatLists (map (input: if input?overlay then [ input.overlay ] else if input?overlays then builtins.attrValues input.overlays else [ ]) (builtins.attrValues (builtins.removeAttrs inputs [ "parent" ]))));
                 # We start with a new set of modules with only this one, its imports, and the default ones from »nixpkgs« here, so import the modules from any other inputs again.
-                imports = (map (input: input.nixosModule or (if input?nixosModules then { imports = builtins.attrValues input.nixosModules; } else { })) (builtins.attrValues (builtins.removeAttrs inputs [ "nixpkgs" ])));
+                imports = (map (input: input.nixosModule or (if input?nixosModules then { imports = builtins.attrValues input.nixosModules; } else { })) (builtins.attrValues (builtins.removeAttrs inputs [ "parent" "nixpkgs" ])));
             }) ({
                 # Some base configuration:
 

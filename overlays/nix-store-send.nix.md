@@ -18,6 +18,9 @@ These are then both expanded to all their dependencies, and any diff in store ar
 The source store must be automatically/freshly optimized, that is, every file in all referenced artifacts is a hardlink to the content addressed file list in `/nix/store/.links/`.
 `nix-store-send` uses this structure to optimize the send stream to include every file (by content) only once, and only if it is not also referenced from `existing`.
 
+
+### Description of Implementation
+
 Naming convention:
     * "file(s)" are (the names of) elements in the `/nix/store/.links/` directory
     * "artifacts" (`Art`/`Arts`) are (the names of) elements in the `/nix/store/` directory
@@ -35,14 +38,14 @@ Naming convention:
     * `uploadHL = !linkHM \ !keepHM \ !oldHM` # files we need but don't have
     * `restoreHM = linkHM \ uploadHL` # files we need and have (just not in the .links dir)
 * sending: `tar` to stdout:
-    * new files: from (and relative to) `/nix/store/.links/` all files listed in `uploadHL`
     * `.restore-links` (optional): `restoreHM<hash, files[]>` mapped to `${hash}=${files[0]}\0` (i.e. for each file we'll need to link some existing path)
     * `.cerate-paths`: serialize `linkHM` as per below instructions
     * `.delete-paths`: serialize `pruneArts` as `\n` separated list of `$(basename $path)`
     * `.prune-links` (optional): serialize `pruneHL` as `\n` separated list
+    * new files: from (and relative to) `/nix/store/.links/` all files listed in `uploadHL`
 
 
-### `cerate-paths` Linking Script
+#### `cerate-paths` Linking Script
 
 We build a "script" (sequence of instructions with arguments).
 Possible instructions are:
@@ -58,7 +61,7 @@ Start with an empty `cwd` stack and no previous path. For each path:
     * Form the front, find the first position where `cwd` and `dirs` differ (or either ended).
     * For each element in `cwd` starting at that position, emit `p()` and remove the element.
     * For each element in `dirs` starting at that position, emit `d(dir)` and add that element to `cwd`.
-* `stat` `name` in `cwd`, set `mode` to `x` if the file is executable, empty otherwise.
+* `stat` `name` in `cwd`, set `mode` to `x` if the file is executable, `-` otherwise.
 * Emit `f(hash,mode,name)`.
 
 The serialization of the script should be compact and simple/fast to parse (in bash). Possible values are instructions, hashes and file/directory names. Names only occur as last argument, and can not contain `\`, `\0` or (TODO: is this the case for all possible string encodings?) the zero byte in general.
@@ -90,6 +93,9 @@ d hash-name
 It can work by amending an existing `/nix/store/.links/` list, or it can re-create the required parts of it.
 If the links list does not exist already, the `tar`/dir must included the `.restore-links` file; otherwise it should contain the `.prune-links` file.
 
+
+### Description of Implementation
+
 If `/nix/store/.links/` exists, move all files from the temp dir into it, but do keep a list of all moved files.
 Otherwise, for each entry in `.restore-links`, hard-link the path after the `=` as the hash before the `=` into the temporary directory, then move the temporary directory to `/nix/store/.links/`.
 
@@ -103,6 +109,7 @@ Before deleting the old artifacts, tests on the new set of artifacts can and sho
 If `/nix/store/.links/` got restored and exists, delete it; else, delete all files moved into it, so they exist.
 Delete all store artifacts listed in the list of added store artifacts (which, if lost, can be extracted by dry-running `.cerate-paths`).
 
+
 ## Implementation
 
 ```nix
@@ -110,11 +117,14 @@ Delete all store artifacts listed in the list of added store artifacts (which, i
 dirname: inputs: final: prev: let
     inherit (final) pkgs; inherit (inputs.self) lib;
 in {
+
     nix-store-send = pkgs.substituteAll {
         src = ./nix-store-send.sh; dir = "bin"; name = "nix-store-send"; isExecutable = true;
         shell = "${pkgs.bash}/bin/bash";
         narHash = "${pkgs.nar-hash}/bin/nar-hash";
     };
+
+    # TODO: implement nix-store-receive and test the pair
 
     nar-hash = pkgs.runCommandLocal "nar-hash" {
         src = ./nar-hash.cc; nativeBuildInputs = [ pkgs.gcc pkgs.openssl ];
