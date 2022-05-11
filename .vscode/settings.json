@@ -26,7 +26,7 @@
 		"bintools", // package
 		"blkid", // program / function
 		"blockdev", // program / function
-		"bootable", // ~= able to boot
+		"bootable", // word (~= able to boot)
 		"bootcode", // filename
 		"bootloader", // word
 		"bridgeadapter", // virtual box
@@ -52,7 +52,7 @@
 		"createrawvmdk", // virtual box
 		"createvm", // virtual box
 		"cryptsetup", // program
-		"ctxify", // ~= add context
+		"ctxify", // abbr (~= add context)
 		"CWD", // abbr
 		"dbus", // linux
 		"dedup", // abbr (deduplicaton)
@@ -184,7 +184,7 @@
 		"mktemp", // program / function
 		"mmcblk", // diks type
 		"modifyvm", // virtual box
-		"mountpoint", // program/function
+		"mountpoint", // program / function
 		"mpris", // abbr
 		"mtab", // file name
 		"multiplatform", // nix
@@ -350,11 +350,12 @@
 		"vhost", "vhosts", // abbr (virtual host)
 		"virtualbox", // program
 		"virtualisation", // nixos option
-		"vmdk", // virtual disk format
+		"vmdk", // file type (virtual disk format)
 		"VSIX", // abbr
 		"vulkan", // program
 		"wikipedia", // website
 		"wipefs", // program / function
+		"wiplib", // name / abbr (WIP library)
 		"wlan", // abbr
 		"workdir", // mount overlay option
 		"WWPA", // abbr

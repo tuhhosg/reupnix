@@ -41,9 +41,9 @@ in {
     in lib.mkIf cfg.enable (lib.mkMerge [ (lib.mkIf (cfg.vfatBoot != null) {
         # If required, declare and mount the boot partition:
 
-        installer.partitions."boot-${hash}" = { type = "ef00"; size = "64M"; index = 1; order = 1500; };
-        installer.disks = lib.mkIf cfg.mbrBoot { primary = { mbrParts = "1"; extraFDiskCommands = ''
-            t;1;b  # type ; part1 ; W95 FAT32
+        wip.installer.partitions."boot-${hash}" = { type = "ef00"; size = "64M"; index = 1; order = 1500; };
+        wip.installer.disks = lib.mkIf cfg.mbrBoot { primary = { mbrParts = "1"; extraFDiskCommands = ''
+            t;1;c  # type ; part1 ; W95 FAT32 (LBA)
             a;1    # active/boot ; part1
         ''; }; };
         fileSystems.${cfg.vfatBoot} = { fsType  =   "vfat";    device = "/dev/disk/by-partlabel/boot-${hash}"; neededForBoot = implied; options = [ "noatime" ]; formatOptions = "-F 32"; };
@@ -53,8 +53,8 @@ in {
 
         fileSystems."/"             = { fsType  =  "tmpfs";    device = "tmpfs"; neededForBoot = implied; options = [ "mode=755" ]; };
 
-        installer.partitions."system-${hash}" = { type = "8300"; size = null; order = 500; };
-        fileSystems."/system"       = { fsType  =   "ext4";    device = "/dev/disk/by-partlabel/system-${hash}"; neededForBoot = true; options = [ "noatime" ]; formatOptions = "-O inline_data -E nodiscard"; };
+        wip.installer.partitions."system-${hash}" = { type = "8300"; size = null; order = 500; };
+        fileSystems."/system"       = { fsType  =   "ext4";    device = "/dev/disk/by-partlabel/system-${hash}"; neededForBoot = true; options = [ "noatime" ]; formatOptions = "-O inline_data -E nodiscard -F"; };
         fileSystems."/nix/store"    = { options = ["bind,ro"]; device = "/system/nix/store"; neededForBoot = implied; };
 
     }) (lib.mkIf (!cfg.writable) {
@@ -82,12 +82,12 @@ in {
     }) ({
         # Declare data partition:
 
-        installer.partitions."data-${hash}" = { type = "8300"; size = cfg.dataSize; order = 1000; };
+        wip.installer.partitions."data-${hash}" = { type = "8300"; size = cfg.dataSize; order = 1000; };
 
     }) (lib.mkIf (cfg.dataDir == null) {
         # Make /data mountable in default spec, to be able to set the next-specialisation marker:
 
-        fileSystems."/data"         = { fsType  =   "ext4";    device = "/dev/disk/by-partlabel/data-${hash}"; neededForBoot = false; options = [ "noatime" "noauto" "nofail" ]; formatOptions = "-O inline_data -E nodiscard"; };
+        fileSystems."/data"         = { fsType  =   "ext4";    device = "/dev/disk/by-partlabel/data-${hash}"; neededForBoot = false; options = [ "noatime" "noauto" "nofail" ]; formatOptions = "-O inline_data -E nodiscard -F"; };
 
     }) (lib.mkIf (cfg.dataDir != null) {
         # On a read/writable data partition, provide persistent logs and container volume storage separately for each spec:

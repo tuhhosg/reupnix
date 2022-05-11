@@ -9,11 +9,11 @@ The configuration(s) that will run on the embedded target device(s).
 
 To prepare the virtual machine disk, as `sudo` user with `nix` installed, run:
 ```bash
- ( cd /etc/nixos && nix run '.#target' -- sudo install-system /home/$(id -un)/vm/disks/target.img && sudo chown $(id -un): /home/$(id -un)/vm/disks/target.img )
+ nix run '.#target' -- sudo install-system /home/$(id -un)/vm/disks/target.img && sudo chown $(id -un): /home/$(id -un)/vm/disks/target.img
 ```
 Then as the user that is supposed to run the VM(s):
 ```bash
- ( cd /etc/nixos && nix run '.#target' -- register-vbox /home/$(id -un)/vm/disks/target.img )
+ nix run '.#target' -- register-vbox /home/$(id -un)/vm/disks/target.img
 ```
 And manage the VM(s) using the UI or the commands printed:
 ```bash
@@ -46,7 +46,9 @@ in { imports = [ ({ ## Hardware
     boot.loader.systemd-boot.enable = true; boot.loader.grub.enable = false;
     th.target.fs.enable = true; th.target.fs.vfatBoot = "/boot";
 
-    th.base.enable = true; th.minify.enable = true;
+    wip.base.enable = true; th.minify.enable = true;
+    th.minify.ditchKernelCopy = false; # Requires --impure to build. Also, we'll soon need to be able to create the boot partition anyway.
+    th.minify.shrinkKernelModList = ./target.lsmod;
 
     networking.interfaces.enp0s3.ipv4.addresses = [ {
         address = "10.0.2.15"; prefixLength = 24;
@@ -61,7 +63,6 @@ in { imports = [ ({ ## Hardware
     specialisation.test1.configuration = {
         th.target.specs.name = "test1";
         # TODO: the actual differences in this configuration
-
     };
 
     th.target.containers.enable = true;
@@ -84,9 +85,18 @@ in { imports = [ ({ ## Hardware
     };
     th.target.containers.containers.foreign = {
         rootFS = [
-            # printf 'FROM ubuntu:20.04 \nRUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y ubuntu-server busybox' | docker build --pull -t local/ubuntu-server -
-            # ( image=local/ubuntu-server ; set -eux ; id=$(docker container create ${image/_\//}) ; trap "docker rm --volumes $id" EXIT ; rm -rrf ../images/$image ; mkdir -p ../images/$image ; cd ../images/$image ; docker export $id | pv | tar x )
-            inputs.rootfs-ubuntu-server
+            # How to get a rootfs layer:
+            # First, find or build an appropriate image:
+            # $ printf 'FROM ubuntu:20.04 \nRUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y ubuntu-server busybox' | docker build --pull -t local/ubuntu-server -
+            # Then (fetch and) unpack it and add it to the nix store:
+            # $ ( image=local/ubuntu-server ; set -eux ; id=$(docker container create ${image/_\//}) ; trap "docker rm --volumes $id" EXIT ; rm -rf ../images/$image ; mkdir -p ../images/$image ; cd ../images/$image ; docker export $id | pv | tar x ; echo "$(nix eval --impure --expr '"${./.}"'):$(nix hash path --type sha256 .)" )
+            # If »$image« to remains constant or is reproducible, then (and only then) this will reproduce the same (content-addressed) store path.
+            # If this store path does not exist locally (e.g. because it can't be reproduced), then both evaluation and building will fail, but only if the path is actually being evaluated.
+            # The layer could also be specified with any of Nix(OS)' fetchers (if it is hosted somewhere nix can reach and authenticate against).
+            # Adding layers as flake inputs is not a good idea, since those will always be fetched even when they are not being accessed, which would be the case for all layers from older builds when chaining previous builds as flake input.
+            "/nix/store/3387hzbl34z2plj3cvfghp4jlvgc2jn5-ubuntu-server:sha256-PPVOPyQGbkgoFkERodVcEyTI84/rG4MhjIuPcjHll98="
+            #"/nix/store/plqajm9ma7by4h0wmz35x6gkqgbwbzp5-android-setup:sha256-+MjVIiL36rQ9ldJa7HyOn3AXgSprZeWOCfKKU4knWa0=" # A path where the hashes match, but that doesn't exist. Creating it as empty dir does not make a difference.
+
             (pkgs.runCommandLocal "layer-prepare-systemd" { } ''
                 mkdir -p $out
                 ln -sT /usr/lib/systemd/systemd $out/init
@@ -106,13 +116,13 @@ in { imports = [ ({ ## Hardware
     environment.systemPackages = [ pkgs.curl pkgs.nano ];
 
     imports = [ (lib.mkIf false { # Just to prove that this can be installed very small:
-        installer.disks.primary.size = "256M"; installer.disks.primary.alignment = 8;
-        installer.partitions."boot-${builtins.substring 0 8 (builtins.hashString "sha256" config.networking.hostName)}".size = lib.mkForce "${toString (32 + 1)}M"; # VBox EFI only supports FAT32
+        wip.installer.disks.primary.size = "256M"; wip.installer.disks.primary.alignment = 8;
+        wip.installer.partitions."boot-${builtins.substring 0 8 (builtins.hashString "sha256" config.networking.hostName)}".size = lib.mkForce "${toString (32 + 1)}M"; # VBox EFI only supports FAT32
         th.target.fs.dataSize = "1K"; fileSystems."/data" = lib.mkForce { fsType = "tmpfs"; device = "tmpfs"; }; # don't really need /data
         fileSystems."/system".formatOptions = lib.mkForce "-E nodiscard"; # (remove »-O inline_data«)
     }) ];
 
-    services.getty.autologinUser = "root"; users.users.root.hashedPassword = "${lib.my.removeTailingNewline (lib.readFile "${dirname}/../res/root-sha256.pass")}"; # .password = "root";
+    services.getty.autologinUser = "root"; users.users.root.hashedPassword = "${lib.wip.removeTailingNewline (lib.readFile "${dirname}/../res/root-sha256.pass")}"; # .password = "root";
 
     boot.kernelParams = [ "boot.shell_on_fail" ];
 
@@ -124,8 +134,10 @@ in { imports = [ ({ ## Hardware
     '');
 
     #services.openssh.enable = true;
-    th.dropbear.enable = true;
-    th.dropbear.rootKeys = [ ''${lib.readFile "${dirname}/../res/niklas-gollenstede.pub"}'' ];
+    wip.services.dropbear.enable = true;
+    wip.services.dropbear.rootKeys = [ ''${lib.readFile "${dirname}/../res/niklas-gollenstede.pub"}'' ];
+
+    #environment.etc.dummy.text = "something";
 
 
 })  ]; }

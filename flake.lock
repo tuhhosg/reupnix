@@ -2,11 +2,11 @@
   "nodes": {
     "nixpkgs": {
       "locked": {
-        "lastModified": 1649012074,
-        "narHash": "sha256-vQUROcJ3FfT3GTB/nJrXwVvjuq8WfK0ImN+RUgDVN1c=",
+        "lastModified": 1651726670,
+        "narHash": "sha256-dSGdzB49SEvdOJvrQWfQYkAefewXraHIV08Vz6iDXWQ=",
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "bc4b9eef3ce3d5a90d8693e8367c9cbfc9fc1e13",
+        "rev": "c777cdf5c564015d5f63b09cc93bef4178b19b01",
         "type": "github"
       },
       "original": {
@@ -18,7 +18,60 @@
     },
     "root": {
       "inputs": {
-        "nixpkgs": "nixpkgs"
+        "nixpkgs": "nixpkgs",
+        "wiplib": "wiplib"
+      }
+    },
+    "wiplib": {
+      "inputs": {
+        "config": "wiplib.config",
+        "nixpkgs": "wiplib.nixpkgs"
+      },
+      "locked": {
+        "lastModified": 1652259846,
+        "narHash": "sha256-fl1EOu6Alg88IqA14yA+VsIUnk7PgikVYR38dUW15rU=",
+        "owner": "NiklasGollenstede",
+        "repo": "nix-wiplib",
+        "rev": "df3fa46b3cfdc893ee33013ccf770956a4f64ca9",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NiklasGollenstede",
+        "repo": "nix-wiplib",
+        "type": "github"
+      }
+    },
+    "wiplib.config": {
+      "locked": {
+        "dir": "example/defaultConfig",
+        "lastModified": 1652094794,
+        "narHash": "sha256-YKsmTOispYxmmpf7i9BJ0Gt9itLcfyXExteYQoZUfGQ=",
+        "owner": "NiklasGollenstede",
+        "repo": "nix-wiplib",
+        "rev": "5e9cc7ce3440be9ce6aeeaedcc70db9c80489c5f",
+        "type": "github"
+      },
+      "original": {
+        "dir": "example/defaultConfig",
+        "owner": "NiklasGollenstede",
+        "repo": "nix-wiplib",
+        "type": "github"
+      }
+    },
+    "wiplib.nixpkgs": {
+      "locked": {
+        "lastModified": 1651726670,
+        "narHash": "sha256-dSGdzB49SEvdOJvrQWfQYkAefewXraHIV08Vz6iDXWQ=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "c777cdf5c564015d5f63b09cc93bef4178b19b01",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "ref": "nixos-unstable",
+        "repo": "nixpkgs",
+        "type": "github"
       }
     }
   },

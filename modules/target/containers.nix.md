@@ -21,6 +21,19 @@ More abstractions to come ...
 dirname: inputs: specialArgs@{ config, pkgs, lib, nodes, ... }: let inherit (inputs.self) lib; in let
     cfg = config.th.target.containers;
     utils = import "${inputs.nixpkgs.outPath}/nixos/lib/utils.nix" { inherit (specialArgs) lib config pkgs; };
+
+    types.storePath = lib.mkOptionType {
+        name = "path in /nix/store"; check = x: (lib.isStorePath x) || (lib.isStorePath (builtins.head (builtins.split ":" x)));
+        merge = loc: defs: let
+            val = lib.mergeOneOption loc defs;
+        in if !(builtins.isString val) || builtins.hasContext val then val else (let
+            split = lib.wip.ifNull (builtins.match ''^(.*?):(sha256-.*)$'' val) (throw "Literal store path ${val} must be followed by :sha256-...");
+            path = (builtins.elemAt split 0); sha256 = (builtins.elemAt split 1);
+            name = lib.substring 44 ((lib.stringLength path) - 44) path;
+        in builtins.path { inherit path name sha256; });
+        # Both »builtins.path« and »builtins.fetchClosure« allow accessing external store paths in pure evaluation mode, and seem roughly equivalent (for that purpose): both require the path to exist and be valid to even evaluate it.
+        # »fetchClosure« experimental and pointlessly queries a remote cache, »path« requires the redundant hash.
+    };
 in {
 
     options.th = { target.containers = {
@@ -32,9 +45,10 @@ in {
                 modules = lib.mkOption { description = "For containers that do use NixOS, the configuration's base modules(s)."; type = lib.types.listOf (lib.types.functionTo lib.types.anything); default = [ ]; };
                 rootFS = lib.mkOption { description = ''
                     For non-NixOS containers, paths to filesystem roots that will be overlayed under a tmpfs. Higher indices will be mounted higher.
+                    To ensure that the paths will be present on the final system, they must evaluate to nix store paths, that is, be nix derivations (nix build results) or existing store paths as literal strings followed by their content hash (»/nix/store/...:sha256-«).
                     The final filesystem must provide an init process at »/init«. The init process is expected to exit with code 133 if it wants to be restarted, and respond to »SIGRTMIN+3« by shutting down.
                     Specifying layers makes ».modules« largely defunct.
-                ''; type = lib.types.listOf (lib.types.path); default = [ ]; };
+                ''; type = lib.types.listOf (types.storePath); default = [ ]; };
                 sshKeys = lib.mkOption { description = "SSH keys that will be configured to allow direct login into the container as that user."; type = lib.types.attrsOf (lib.types.listOf lib.types.str); default = { }; };
             }; }));
             default = { primary = { }; };
@@ -61,7 +75,7 @@ in {
                 # Some base configuration:
 
                 th.minify.enable = true; # don't let the container pull in all the stuff that the host avoided
-                th.base.enable = true;
+                wip.base.enable = true;
 
                 users.allowNoPasswordLogin = true; # TODO: why is this an issue?
 
@@ -113,7 +127,7 @@ in {
         }) ]) cfg.containers;
 
         # For non-native containers, create an overlayfs where / will be bound to:
-        fileSystems = lib.my.mapMerge (name: cfg: if cfg.rootFS != [ ] then {
+        fileSystems = lib.wip.mapMerge (name: cfg: if cfg.rootFS != [ ] then {
             "/var/lib/containers/${name}" = { fsType = "overlay"; device = "overlay"; options = [
                 "lowerdir=${lib.concatStringsSep ":" (lib.reverseList cfg.rootFS)}"
                 "workdir=/run/containers/${name}.workdir"
@@ -121,7 +135,7 @@ in {
             ]; };
         } else { }) cfg.containers;
         # Upper and work dirs need to be on the same mount, but they also do have to exist, so create them:
-        systemd.services = lib.my.mapMerge (name: cfg: if cfg.rootFS != [ ] then let
+        systemd.services = lib.wip.mapMerge (name: cfg: if cfg.rootFS != [ ] then let
             mountPoint = "${utils.escapeSystemdPath "/var/lib/containers/${name}"}.mount";
         in { "mkdir-${utils.escapeSystemdPath "/var/lib/containers/${name}"}" = {
             description = "Create mount points for container@${name} rootfs";
@@ -133,7 +147,7 @@ in {
             '';
         }; } else { }) cfg.containers;
 
-        th.dropbear.rootKeys = let
+        wip.services.dropbear.rootKeys = let
             # not sure whether this is secure and/or completely transparent, but is works well enough for now
             ssh-to-container = pkgs.writeShellScript "ssh-to-container" ''
                 if [[ ! $SSH_ORIGINAL_COMMAND ]] ; then

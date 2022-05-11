@@ -7,36 +7,36 @@
 ); inputs = {
 
     # To update »./flake.lock«: $ nix flake update
-    nixpkgs = { url = "github:NixOS/nixpkgs/nixos-unstable"; }; # Upgrading from bc4b9eef3ce3d5a90d8693e8367c9cbfc9fc1e13 to fd364d268852561223a5ada15caad669fd72800e broke systemd-boot (didn't copy EFI files to /boot)
-    #rootfs-ubuntu-server = { url = ".../images/local/ubuntu-server"; flake = false; }; # see instructions at use site, then set absolute path and uncomment
+    nixpkgs = { url = "github:NixOS/nixpkgs/nixos-unstable"; };
+    wiplib = { url = "github:NiklasGollenstede/nix-wiplib"; };
 
-}; outputs = inputs: let patches = {
+    #parent = { type = "indirect"; id = <something that resolves to this repo>; };
+    # inputs.self.shortRev is only set if the git tree is clean (?)
+
+}; outputs = inputs@{ wiplib, ... }: let patches = {
 
     nixpkgs = [
-        ./patches/nixpkgs-test.patch
-        ./patches/nixpkgs-fix-systemd-boot-install.patch
+        inputs.wiplib.patches.nixpkgs-test
+        inputs.wiplib.patches.nixpkgs-fix-systemd-boot-install
         #./patches/nixpkgs-add-specialisation-specialArgs.patch # (messing with the specialArgs could get messy, since there is no namespace isolation)
         ./patches/nixpkgs-make-bootable-optional.patch
         ./patches/nixpkgs-make-required-packages-optional.patch
     ];
 
-}; in (import "${./.}/lib/flakes.nix" "${./.}/lib" inputs).patchFlakeInputsAndImportRepo inputs patches ./. (inputs@ { self, nixpkgs, ... }: repo@{ overlays, lib, ... }: let
+}; in inputs.wiplib.lib.wip.patchFlakeInputsAndImportRepo inputs patches ./. (inputs@{ self, nixpkgs, ... }: repo@{ overlays, lib, ... }: let
 
-
-in let
-    systemsFlake = lib.my.mkSystemsFalke {
+    systemsFlake = lib.wip.mkSystemsFalke (rec {
         #systems = { dir = "${./.}/hosts"; exclude = [ ]; };
         inherit inputs;
-        scripts = [ ./utils/functions.sh ./utils/install.sh.md ];
-    };
+        overlayInputs = builtins.removeAttrs inputs [ "parent" ];
+        moduleInputs = builtins.removeAttrs inputs [ "parent" "nixpkgs" ];
+        scripts = [ ./utils/install.sh.md ] ++ (lib.attrValues lib.wip.setup-scripts);
+    });
 
-in (lib.my.forEachSystem [ "aarch64-linux" "x86_64-linux" ] (localSystem: { # And here are the outputs:
-    # per architecture
-    packages = (lib.my.getModifiedPackages (lib.my.importPkgs inputs { system = localSystem; }) overlays) // systemsFlake.packages.${localSystem};
-    defaultPackage = systemsFlake.packages.${localSystem}.all-systems;
-    apps = systemsFlake.apps.${localSystem}; devShells = systemsFlake.devShells.${localSystem};
-}) // ({
-    # architecture independent
-    nixosConfigurations = systemsFlake.nixosConfigurations;
-    inherit (repo) lib overlays overlay nixosModules nixosModule;
-}))); }
+in [ # Run »nix flake show --allow-import-from-derivation« to see what this merges to:
+    repo systemsFlake
+    (lib.wip.forEachSystem [ "aarch64-linux" "x86_64-linux" ] (localSystem: {
+        packages = lib.wip.getModifiedPackages (lib.wip.importPkgs inputs { system = localSystem; }) overlays;
+        defaultPackage = systemsFlake.packages.${localSystem}.all-systems;
+    }))
+]); }

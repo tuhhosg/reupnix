@@ -31,16 +31,19 @@ if [[ ${SUDO_USER:-} ]] ; then function nix {( args=("$@") ; su - "$SUDO_USER" -
 
 if [[ $debug ]] ; then set +e ; set -E ; trap 'code= ; bash -l || code=$? ; if [[ $code ]] ; then exit $code ; fi' ERR ; fi # On error, instead of exiting straight away, open a shell to allow diagnosing/fixing the issue. Only exit if that shell reports failure (e.g. CtrlC + CtrlD). Unfortunately, the exiting has to be repeated for level of each nested sub-shells.
 
-targetSystem=@{config.system.build.toplevel.outPath}
+targetSystem=@{config.system.build.toplevel}
 mnt=/tmp/nixos-install-@{config.networking.hostName} ; mkdir -p "$mnt" ; prepend_trap "rmdir $mnt" EXIT # »mnt=/run/user/0/...« would be more appropriate, but »nixos-install« does not like the »700« permissions on »/run/user/0«
 
 
 ## Get File Systems Ready
 
 partition-disks "$1"
-format-partitions
 # ... block layers would go here ...
+source @{config.wip.installer.postPartitionCommands!writeText.postPartitionCommands}
+format-partitions
+source @{config.wip.installer.postFormatCommands!writeText.postFormatCommands}
 prepend_trap "unmount-system $mnt" EXIT ; mount-system $mnt
+source @{config.wip.installer.postMountCommands!writeText.postMountCommands}
 if [[ $debug ]] ; then ( set -x ; tree -a -p -g -u -s -D -F --timefmt "%Y-%m-%d %H:%M:%S" $mnt ) ; fi
 
 
@@ -55,19 +58,21 @@ for dir in dev/ sys/ run/ ; do mkdir -p $mnt/$dir ; mount tmpfs -t tmpfs $mnt/$d
 mkdir -p -m 755 $mnt/nix/var ; mkdir -p -m 1775 $mnt/nix/store
 if [[ ${SUDO_USER:-} ]] ; then chown $SUDO_USER: $mnt/nix/store $mnt/nix/var ; fi
 
-( set -x ; time nix copy --no-check-sigs --to $mnt @{config.th.minify.topLevel.outPath:-$targetSystem} )
+( set -x ; time nix copy --no-check-sigs --to $mnt @{config.th.minify.topLevel:-$targetSystem} )
 ln -sT $(realpath $targetSystem) $mnt/run/current-system
+mkdir -p -m 755 $mnt/nix/var/nix/profiles  ; ln -sT $(realpath $targetSystem) $mnt/nix/var/nix/profiles/system
+mkdir -p $mnt/etc/ ; [[ -e $mnt/etc/NIXOS ]] || touch $mnt/etc/NIXOS
 
 if [[ $(cat /run/current-system/system 2>/dev/null || echo "x86_64-linux") != "@{config.preface.hardware}"-linux ]] ; then # cross architecture installation
     mkdir -p $mnt/run/binfmt ; cp -a {,$mnt}/run/binfmt/"@{config.preface.hardware}" || true
-    # Ubuntu (by default) expects the "interpreter" at »/usr/bin/qemu-@{config.preface.hardware/-linux/}-static«.
+    # Ubuntu (by default) expects the "interpreter" at »/usr/bin/qemu-@{config.preface.hardware}-static«.
 fi
 
 if [[ ${SUDO_USER:-} ]] ; then chown -R root:root $mnt/nix ; chown :30000 $mnt/nix/store ; fi
 
 mount -o bind /nix/store $mnt/nix/store # all the things required to _run_ the system are copied, but (may) need some more things to initially install it
-mkdir -p $mnt/boot/EFI/{systemd,BOOT}/ # systemd-boot needs these to exist already
-code=0 ; TMPDIR=/tmp LC_ALL=C nixos-install --system @{config.th.minify.topLevel.outPath:-$targetSystem} --no-root-passwd --no-channel-copy --root $mnt --no-bootloader && nixos-enter --root $mnt -c "@{config.system.build.installBootLoader.outPath} $targetSystem" || code=$? #--debug
+code=0 ; TMPDIR=/tmp LC_ALL=C nixos-install --system @{config.th.minify.topLevel:-$targetSystem} --no-root-passwd --no-channel-copy --root $mnt --no-bootloader && NIXOS_INSTALL_BOOTLOADER=1 nixos-enter --root $mnt -c "@{config.system.build.installBootLoader} $targetSystem" || code=$? #--debug
+#code=0 ; ( set -x ; nixos-enter --root $mnt -c "@{config.system.build.installBootLoader} $targetSystem" ) || code=$? #--debug
 umount -l $mnt/nix/store
 
 if (( code != 0 )) ; then

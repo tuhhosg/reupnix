@@ -1,1 +1,1 @@
-dirname: inputs@{ self, nixpkgs, ...}: self.lib.my.importModules inputs dirname { }
+dirname: inputs@{ self, nixpkgs, ...}: self.lib.wip.importModules inputs dirname { }
