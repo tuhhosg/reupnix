@@ -14,13 +14,21 @@ More abstractions to come ...
 * `pkgs.dockerTools.exportImage` takes a layered image and reduces it to a single-layer image
 
 
+## Commands
+
+```bash
+ systemctl status container@name
+ machinectl shell name
+```
+
+
 ## Implementation
 
 ```nix
 #*/# end of MarkDown, beginning of NixOS module:
-dirname: inputs: specialArgs@{ config, pkgs, lib, nodes, ... }: let inherit (inputs.self) lib; in let
+dirname: inputs: { config, pkgs, lib, nodes, utils, ... }: let inherit (inputs.self) lib; in let
     cfg = config.th.target.containers;
-    utils = import "${inputs.nixpkgs.outPath}/nixos/lib/utils.nix" { inherit (specialArgs) lib config pkgs; };
+    hostCfg = config;
 
     types.storePath = lib.mkOptionType {
         name = "path in /nix/store"; check = x: (lib.isStorePath x) || (lib.isStorePath (builtins.head (builtins.split ":" x)));
@@ -77,7 +85,8 @@ in {
                 th.minify.enable = true; # don't let the container pull in all the stuff that the host avoided
                 wip.base.enable = true;
 
-                users.allowNoPasswordLogin = true; # TODO: why is this an issue?
+                system.stateVersion = lib.mkDefault hostCfg.system.stateVersion;
+                users.allowNoPasswordLogin = true;
 
             }) ({
                 # Apply ».config«:
@@ -128,24 +137,19 @@ in {
 
         # For non-native containers, create an overlayfs where / will be bound to:
         fileSystems = lib.wip.mapMerge (name: cfg: if cfg.rootFS != [ ] then {
-            "/var/lib/containers/${name}" = { fsType = "overlay"; device = "overlay"; options = [
-                "lowerdir=${lib.concatStringsSep ":" (lib.reverseList cfg.rootFS)}"
-                "workdir=/run/containers/${name}.workdir"
-                "upperdir=/run/containers/${name}"
-            ]; };
+            "/var/lib/containers/${name}" = {
+                fsType = "overlay"; device = "overlay";
+                options = [
+                    "lowerdir=${lib.concatStringsSep ":" (lib.reverseList cfg.rootFS)}"
+                    "workdir=/run/containers/${name}.workdir"
+                    "upperdir=/run/containers/${name}"
+                ];
+                depends = cfg.rootFS ++ [ "/run/containers" ];
+                preMountCommands = ''
+                    mkdir -p /var/lib/containers/${name} /run/containers/${name}.workdir /run/containers/${name}
+                '';
+            };
         } else { }) cfg.containers;
-        # Upper and work dirs need to be on the same mount, but they also do have to exist, so create them:
-        systemd.services = lib.wip.mapMerge (name: cfg: if cfg.rootFS != [ ] then let
-            mountPoint = "${utils.escapeSystemdPath "/var/lib/containers/${name}"}.mount";
-        in { "mkdir-${utils.escapeSystemdPath "/var/lib/containers/${name}"}" = {
-            description = "Create mount points for container@${name} rootfs";
-            wantedBy = [ mountPoint ]; before = [ mountPoint ];
-            unitConfig.RequiresMountsFor = [ "/var/lib/containers/" ];
-            unitConfig.DefaultDependencies = false; # needed to prevent a cycle
-            serviceConfig.Type = "oneshot"; script = ''
-                mkdir -p /var/lib/containers/${name} /run/containers/${name}.workdir /run/containers/${name}
-            '';
-        }; } else { }) cfg.containers;
 
         wip.services.dropbear.rootKeys = let
             # not sure whether this is secure and/or completely transparent, but is works well enough for now

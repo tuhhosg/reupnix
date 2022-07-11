@@ -15,8 +15,9 @@ The by far biggest package is currently `perl` with almost 60MB. Once `update-us
 
 ```nix
 #*/# end of MarkDown, beginning of NixOS module:
-dirname: inputs: specialArgs@{ config, pkgs, lib, ... }: let inherit (inputs.self) lib; in let
+dirname: inputs: specialArgs@{ config, pkgs, lib, utils, ... }: let inherit (inputs.self) lib; in let
     cfg = config.th.minify;
+    specialArgs' = specialArgs // { inherit inputs; }; # Apparently this module gets called and evaluated twice. Once with all »specialArgs« passed into the build, and once only with those that this module lists as names arguments.
 
     desiredSystemPackages = [ # (can check this against »lib.naturalSort (lib.unique (map (p: p.pname or p.name) nixosConfigurations.target.config.environment.systemPackages))«)
         "bash-5.1-p16" # inevitable
@@ -43,33 +44,34 @@ in {
 
     options.th = { minify = {
         enable = lib.mkEnableOption "various approaches to shrink NixOS' closure size";
-        shrinkKernelModList = lib.mkOption { type = lib.types.nullOr lib.types.path; default = null; };
         topLevel = lib.mkOption { default = null; type = lib.types.anything; }; # See »ditchKernelCopy«.
     }; };
 
     imports = (
-        map (lib.wip.makeNixpkgsModuleConfigOptional inputs.nixpkgs specialArgs) optionalModules
+        map (lib.wip.makeNixpkgsModuleConfigOptional specialArgs') optionalModules
     ) ++ [
         # (None of these should have any effect by default!)
-        (lib.wip.overrideNixpkgsModule inputs.nixpkgs specialArgs "virtualisation/nixos-containers.nix" (module: {
+        (lib.wip.overrideNixpkgsModule specialArgs' "virtualisation/nixos-containers.nix" (module: {
             options.boot.interactiveContainers = (lib.mkEnableOption "interactive nixos-containers") // { default = true; };
             config.content.environment.systemPackages = lib.mkIf config.boot.interactiveContainers module.config.content.environment.systemPackages;
         }))
-        (lib.wip.overrideNixpkgsModule inputs.nixpkgs specialArgs "tasks/filesystems.nix" (module: {
+        (lib.wip.overrideNixpkgsModule specialArgs' "tasks/filesystems.nix" (module: {
             options.includeFSpackages = (lib.mkEnableOption "inclusion of filesystem maintenance tools") // { default = true; };
             config.environment.systemPackages = lib.mkIf config.includeFSpackages module.config.environment.systemPackages; # adds fuse
             config.system.fsPackages = lib.mkIf config.includeFSpackages module.config.system.fsPackages; # adds dosfstools
         }))
-        (lib.wip.overrideNixpkgsModule inputs.nixpkgs specialArgs "tasks/network-interfaces.nix" (module: {
+        (lib.wip.overrideNixpkgsModule specialArgs' "tasks/network-interfaces.nix" (module: {
             options.includeNetTools = (lib.mkEnableOption "inclusion of basic networking utilities") // { default = true; };
             config.environment.systemPackages = lib.mkIf config.includeNetTools module.config.environment.systemPackages; # adds [ host iproute2 iputils nettools ]
             config.systemd.services.network-local-commands = lib.mkIf config.includeNetTools module.config.systemd.services.network-local-commands; # implements »config.networking.localCommands« using with iproute2
             #config.security.wrappers.ping = lib.mkIf config.includeNetTools module.config.security.wrappers.ping; # adds »ping« based on »iputils«
         }))
 
-    ] ++ (lib.mapAttrsToList (name: config: {
-        options.th.minify.${name} = lib.mkOption { description = config.description or ""; type = lib.types.bool; default = (config.enableByDefault or true) && cfg.enable; };
-        config = lib.mkIf (cfg.${name}) (builtins.removeAttrs config [ "description" "enableByDefault" ]);
+    ] ++ (lib.mapAttrsToList (name: config: let
+        enable = lib.mkOption { description = config.description or ""; type = lib.types.bool; default = (config.enableByDefault or true) && cfg.enable; };
+    in {
+        options.th.minify.${name} = if config?options then { inherit enable; } // config.options else enable;
+        config = lib.mkIf (if config?options then cfg.${name}.enable else cfg.${name}) (builtins.removeAttrs config [ "description" "enableByDefault" "options" ]);
     }) {
 
         reduceDefaults = ({
@@ -102,12 +104,13 @@ in {
             description = ''Disable/exclude Nix: The system won't be able to update/change itself.'';
             nix.enable = false;
             #system.extraSystemBuilderCmds = lib.mkAfter ''rm -f $out/config'';
-            system.extraSystemBuilderCmds = lib.mkForce ""; # For output path stability (the path not changing unless something actually changed) it is important to not just remove this from the build output but also to not even include it in the input. Without this, changes in the input sources do not immediately cause the toplevel derivation to change.
+            #system.extraSystemBuilderCmds = lib.mkForce ""; # For output path stability (the path not changing unless something actually changed) it is important to not just remove this from the build output but also to not even include it in the input. Without this, changes in the input sources do not immediately cause the toplevel derivation to change.
             system.disableInstallerTools = true;
-            systemd.tmpfiles.rules = [ # »nixos-containers«/»config.containers« expect these to exist and fail to stat without
-                ''f  "/nix/var/nix/db"             0440  root root  -''
-                ''f  "/nix/var/nix/daemon-socket"  0440  root root  -''
+            systemd.tmpfiles.rules = [ # »nixos-containers«/»config.containers« expect these to exist and fail to start without
+                ''d  "/nix/var/nix/db"             0555  root root  -''
+                ''d  "/nix/var/nix/daemon-socket"  0555  root root  -''
             ];
+            wip.base.includeInputs = false;
         });
 
         disableLiveSwitching = ({
@@ -206,6 +209,13 @@ in {
             programs.bash.enableCompletion = false;
             programs.less.enable = lib.mkForce false; environment.variables.PAGER = lib.mkForce "cat"; # default depends on less and ncurses
             programs.command-not-found.enable = false; # depends on perl (and more)
+            programs.bash.promptInit = ''
+                # Provide a less nice prompt that the dumb shell can deal with:
+                if [ "''${TERM:-}" != "dumb" ] ; then
+                    PS1='$(printf "%-+ 4d" $?)[\D{%Y-%m-%d %H:%M:%S}] \u@\h:\w'"''${TERM_RECURSION_DEPTH:+["$TERM_RECURSION_DEPTH"]}"'\$ '
+                fi
+                export TERM_RECURSION_DEPTH=$(( 1 + ''${TERM_RECURSION_DEPTH:-0} ))
+            '';
         });
 
         etcAsOverlay = ({
@@ -219,26 +229,30 @@ in {
             '';
             enableByDefault = false;
             # TODO: both of these could use »config.fileSystems« (see »./target/containers.nix.md« for mount sources)!
-            #boot.initrd.kernelModules = [ "overlay" ]; # TODO: this should not be required
             # The new etc script must run before any write to »/etc«.
             system.activationScripts.etc = lib.mkForce "";
             system.activationScripts."AA-etc" = { deps = [ "specialfs" ]; text = ''
-                mkdir -pm 000 /run/etc-overlay ; mkdir -p 755 /run/etc-overlay/{dynamic,workdir}
-                mount -t overlay overlay -o lowerdir=${config.system.build.etc}/etc,workdir=/run/etc-overlay/workdir,upperdir=/run/etc-overlay/dynamic /etc
+                mkdir -pm 000 /run/etc-overlay ; mkdir -p 755 /run/etc-overlay/{workdir,upperdir}
+                mount -t overlay overlay -o lowerdir=${config.system.build.etc}/etc,workdir=/run/etc-overlay/workdir,upperdir=/run/etc-overlay/upperdir /etc
             ''; };
+            boot.initrd.kernelModules = [ "overlay" ]; # the activation scripts are run between initrd and systemd, so apparently the module must (have been) loaded in initrd
+            # This mount can't be done as »config.fileSystems."/etc"«, because it would be »neededForBoot« (to be available in the activation scripts), and that would make the initramfs depend on »config.system.build.etc«, which would cause a new build of the initramfs on any change to etc.
         });
         etcAsReadonly = ({
             description = ''
                 Like ».etcAsOverlay«, but this version simply mounts the static etc completely read-only, which may very well not work with many configurations.
             '';
-            enableByDefault = true;
+            enableByDefault = !cfg.etcAsOverlay;
             # Do this early to get errors if anything later writes to »/etc«.
             system.activationScripts.etc = lib.mkForce "";
             system.activationScripts."AA-etc" = { deps = [ "specialfs" ]; text = ''
-                mkdir -pm 000 /etc ; mount -o bind ${config.system.build.etc}/etc /etc
+                mkdir -pm 000 /etc ; mount -o bind,ro ${config.system.build.etc}/etc /etc
             ''; };
             environment.etc.mtab.source = "/proc/mounts"; # (»lib.types.path« only allows absolute targets)
+            environment.etc.NIXOS.text = ""; # some tooling wants this to exist
             systemd.services.systemd-tmpfiles-setup.serviceConfig.ExecStart = [ "" "systemd-tmpfiles --create --remove --boot --exclude-prefix=/dev --exclude-prefix=/etc" ];
+            environment.etc.dropbear = lib.mkIf config.wip.services.dropbear.enable { source = "/run/user/0"; };
+
         });
 
         staticUsers = ({
@@ -249,7 +263,6 @@ in {
         } // (let
             getGid = g: toString (lib.wip.ifNull g.gid (throw "Group ${g.name} has no GID"));
             getUid = u: toString (lib.wip.ifNull u.uid (throw "User ${u.name} has no UID"));
-            utils = import "${inputs.nixpkgs.outPath}/nixos/lib/utils.nix" { inherit (specialArgs) lib config pkgs; };
         in {
             system.activationScripts.users = lib.mkForce "";
             users.mutableUsers = false; assertions = [ { assertion = config.users.mutableUsers == false; message = "Static user generation is incompatible with »users.mutableUsers = true«."; } ];
@@ -371,38 +384,44 @@ in {
         shrinkKernel = ({
             description = ''
                 Reduce the kernel size by removing unused modules.
-                Run »ssh target lsmod >./lsmod.out« to record the module usage at runtime and pass the resulting file as ».shrinkKernelModList«.
+                Run »ssh target lsmod | (read -r; printf "%s\n" "$REPLY"; sort) >./lsmod.out« to record the module usage at runtime and pass the resulting file as ».shrinkKernel.usedModules«.
                 »make localmodconfig« then filters everything that the default kernel config selected as "module" (which are most things) against the »lsmod« output and deselects everything that isn't used.
                 In case that removes something that is actually needed, at some other time, in a different specialisation, etc, add it to the »explicit« list.
-                This reduces the size of the 5.15 kernel from 120MB to 14MB.
+                In the minimal VirtualBox example, this reduces the size of the 5.15 kernel from 120MB to 14MB.
             '';
-            enableByDefault = cfg.shrinkKernelModList != null;
-            # TODO: »explicit« and »availableKernelModules« options
+            enableByDefault = cfg.shrinkKernel.usedModules != null;
+            options = {
+                baseKernel = lib.mkOption { description = "Base kernel to shrink."; type = lib.types.package; default = pkgs.linuxPackages.kernel; };
+                usedModules = lib.mkOption { description = "Output of »lsmod« used in »make LSMOD=\${shrinkKernel.usedModules} localmodconfig« to remove all modules that are unused (at the time »lsmod« is called) from the kernel package."; type = lib.types.nullOr lib.types.path; default = null; };
+                overrideConfig = lib.mkOption { description = "Config flags to force to a specific value after applying »make localmodconfig«."; type = lib.types.attrsOf lib.types.str; default = { }; };
+            };
 
             # further optimizations: lto,
             # $ wget -qO- https://cdn.kernel.org/pub/linux/kernel/v5.x/linux-5.15.30.tar.xz | xzcat - | tar -xf- --strip-components=1
+            th.minify.shrinkKernel.overrideConfig = {
+                CRYPTO_USER_API_HASH = "m"; AUTOFS4_FS = "m"; # else assertion fails
+                SATA_AHCI = "m"; # »ahci« module
+            };
 
             boot.kernelPackages = let
-                base = pkgs.linuxPackages.kernel;
+                base = cfg.shrinkKernel.baseKernel;
                 configfile = pkgs.stdenv.mkDerivation {
                     inherit (base) version src; pname = "linux-localmodconfig";
                     inherit (base.configfile) depsBuildBuild nativeBuildInputs;
-                    oldConfig = base.configfile; LSMOD = cfg.shrinkKernelModList; # (use relative path to ensure th path does not change when some other file in the repo changes)
-                    explicit = lib.concatStringsSep " " [ # values to replace after applying »localmodconfig«
-                        "CONFIG_CRYPTO_USER_API_HASH=m CONFIG_AUTOFS4_FS=m" # else assertion fails
-                    ];
+                    baseConfig = base.configfile; usedModules = cfg.shrinkKernel.usedModules;
+                    overrideConfig = lib.concatStringsSep " " (lib.mapAttrsToList (k: v: if v == null then "" else "CONFIG_${k}=${v}") cfg.shrinkKernel.overrideConfig);
                     buildPhase = ''( set -x
-                        cp $oldConfig .config
-                        make LSMOD=$LSMOD localmodconfig
-                        for var in $explicit ; do
-                            perl -pi -e 's|^(# )?'"''${var/=*/}"'\b.*|'"$var"'|' .config
+                        cp $baseConfig .config
+                        make LSMOD=$usedModules localmodconfig
+                        for var in $overrideConfig ; do
+                            perl -pi -e 's;^(# )?'"''${var/=*/}"'\b.*;'"$var"';' .config
                         done
                     )'';
                     installPhase = ''mv .config $out'';
                 };
                 kernel = pkgs.linuxKernel.customPackage {
                     inherit (base) version src; inherit configfile;
-                    allowImportFromDerivation = true;
+                    allowImportFromDerivation = true; # This allows parsing the config file (after building it), but to what end?
                 };
             in pkgs.linuxPackagesFor kernel.kernel;
 

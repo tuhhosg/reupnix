@@ -81,7 +81,7 @@ index b8aeee8c11b..f4e72666f39 100644
 +      default = !config.boot.isContainer;
 +      defaultText = literalExpression "!config.boot.isContainer";
 +      description = ''
-+        Whether to make this system configuration directly bootable by configuring a bootloader, or instead just prvice booting from stage 2 onwards.
++        Whether to make this system configuration directly bootable by configuring a bootloader, or instead just support booting from stage 2 onwards.
 +      '';
 +      type = types.bool;
 +    };

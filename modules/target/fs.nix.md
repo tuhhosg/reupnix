@@ -27,9 +27,6 @@ in {
 
     options.th = { target.fs = {
         enable = lib.mkEnableOption "the file systems for a target device";
-        vfatBoot = lib.mkOption { description = "Path at which to mount a vfat boot/firmware partition. Set to »null« if not required by the boot architecture."; type = lib.types.nullOr lib.types.str; default = "/boot"; };
-        mbrBoot = lib.mkOption { description = "Whether to create a hybrid MBR for the boot partition."; type = lib.types.bool; default = cfg.vfatBoot != null; };
-        writable = lib.mkOption { description = "Whether /nix/store and /boot are writable of not."; type = lib.types.bool; default = cfg.dataDir == null; };
         dataDir = lib.mkOption { description = "Dir on /data partition that on which logs and volumes are stored. /data part won't be mounted if »null«."; type = lib.types.nullOr lib.types.str; default = null; };
         dataSize = lib.mkOption { description = "Size of the »/data« partition."; type = lib.types.str; default = "2G"; };
     }; };
@@ -38,51 +35,24 @@ in {
         hash = builtins.substring 0 8 (builtins.hashString "sha256" config.networking.hostName);
         implied = true; # some mount points are implied (and forced) to be »neededForBoot« in »specialArgs.utils.pathsNeededForBoot« (this marks those here)
 
-    in lib.mkIf cfg.enable (lib.mkMerge [ (lib.mkIf (cfg.vfatBoot != null) {
-        # If required, declare and mount the boot partition:
-
-        wip.installer.partitions."boot-${hash}" = { type = "ef00"; size = "64M"; index = 1; order = 1500; };
-        wip.installer.disks = lib.mkIf cfg.mbrBoot { primary = { mbrParts = "1"; extraFDiskCommands = ''
-            t;1;c  # type ; part1 ; W95 FAT32 (LBA)
-            a;1    # active/boot ; part1
-        ''; }; };
-        fileSystems.${cfg.vfatBoot} = { fsType  =   "vfat";    device = "/dev/disk/by-partlabel/boot-${hash}"; neededForBoot = implied; options = [ "noatime" ]; formatOptions = "-F 32"; };
-
-    }) ({
-        # Mount a tmpfs as root, and (currently) only the nix-store from a system partition:
+    in lib.mkIf cfg.enable (lib.mkMerge [ ({
+        # Mount a tmpfs as root, and (currently) only the nix-store from a read-only system partition:
 
         fileSystems."/"             = { fsType  =  "tmpfs";    device = "tmpfs"; neededForBoot = implied; options = [ "mode=755" ]; };
 
-        wip.installer.partitions."system-${hash}" = { type = "8300"; size = null; order = 500; };
-        fileSystems."/system"       = { fsType  =   "ext4";    device = "/dev/disk/by-partlabel/system-${hash}"; neededForBoot = true; options = [ "noatime" ]; formatOptions = "-O inline_data -E nodiscard -F"; };
+        wip.fs.disks.partitions."system-${hash}" = { type = "8300"; size = null; order = 500; };
+        fileSystems."/system"       = { fsType  =   "ext4";    device = "/dev/disk/by-partlabel/system-${hash}"; neededForBoot = true; options = [ "noatime" "ro" ]; formatOptions = "-O inline_data -E nodiscard -F"; };
         fileSystems."/nix/store"    = { options = ["bind,ro"]; device = "/system/nix/store"; neededForBoot = implied; };
 
-    }) (lib.mkIf (!cfg.writable) {
-        # Make system and boot partition read-only, unless in default/fallback spec (might want to have a special spec and/or setting for this):
-
-        fileSystems = (if (cfg.vfatBoot != null) then {
-            ${cfg.vfatBoot} = { options = [ "ro" ]; };
-        } else { }) // {
-            "/system"       = { options = [ "ro" ]; };
-        };
-
-    }) ({
-        # Any file systems marked as neededForBoot are mounted in the initramfs, and since all specs share the default initramfs, any differences in those file systems has to be applied here:
-
-        boot.initrd.postMountCommands = ''
-            # apply mount options per specialisation
-            if [ -e /run/current-specialisation ] ; then
-                ${lib.optionalString (cfg.vfatBoot != null) ''
-                    mount -o remount,ro $targetRoot${cfg.vfatBoot}
-                ''}
-                mount -o remount,ro $targetRoot/system
-            fi
-        '';
+        systemd.tmpfiles.rules = [ # »nixos-containers«/»config.containers« expect these to exist and fail to start without
+            ''d  "/nix/var/nix/db"             0555  root root  -''
+            ''d  "/nix/var/nix/daemon-socket"  0555  root root  -''
+        ];
 
     }) ({
         # Declare data partition:
 
-        wip.installer.partitions."data-${hash}" = { type = "8300"; size = cfg.dataSize; order = 1000; };
+        wip.fs.disks.partitions."data-${hash}" = { type = "8300"; size = cfg.dataSize; order = 1000; };
 
     }) (lib.mkIf (cfg.dataDir == null) {
         # Make /data mountable in default spec, to be able to set the next-specialisation marker:
@@ -94,20 +64,7 @@ in {
 
         fileSystems."/data"         = { fsType  =   "ext4";    device = "/dev/disk/by-partlabel/data-${hash}"; neededForBoot = true; options = [ "noatime" ]; };
         fileSystems."/var/log"      = { options = [ "bind" ];  device = "/data/by-config/${cfg.dataDir}/log"; neededForBoot = implied; };
-        fileSystems."/volumes"      = { options = [ "bind" ];  device = "/data/by-config/${cfg.dataDir}/volumes"; neededForBoot = false; };
-
-    }) ({
-        # Ensure bind-mount "device" exists for the current spec (must be included for all / the default spec, since only that actually has an initrd):
-
-        boot.initrd.postDeviceCommands = ''
-            # hack to make sure the bind-mount "device"s exist
-            if [ -e /run/current-specialisation ] ; then
-                mkdir /tmp/data-mnt ; mount -t ext4 /dev/disk/by-partlabel/data-${hash} /tmp/data-mnt
-                mkdir -p /tmp/data-mnt/by-config/$(cat /run/current-specialisation)/log
-                mkdir -p /tmp/data-mnt/by-config/$(cat /run/current-specialisation)/volumes
-                umount /tmp/data-mnt ; rmdir /tmp/data-mnt
-            fi
-        '';
+        fileSystems."/volumes"  = rec { options = [ "bind" ];  device = "/data/by-config/${cfg.dataDir}/volumes"; neededForBoot = false; preMountCommands = "mkdir -p -- ${lib.escapeShellArg device}"; };
 
     }) ]);
 

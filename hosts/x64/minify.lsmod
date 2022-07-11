@@ -1,0 +1,115 @@
+Module                  Size  Used by
+aesni_intel           380928  0
+agpgart                49152  4 intel_agp,intel_gtt,ttm,drm
+ata_generic            16384  0
+ata_piix               40960  2
+atkbd                  36864  0
+autofs4                53248  0
+backlight              24576  2 drm_kms_helper,drm
+bochs                  16384  0
+bridge                294912  0
+button                 24576  0
+cdrom                  77824  1 sr_mod
+configfs               57344  1
+crc_t10dif             20480  1 t10_pi
+crc16                  16384  1 ext4
+crc32_pclmul           16384  0
+crc32c_generic         16384  0
+crc32c_intel           24576  3
+crct10dif_common       16384  3 crct10dif_generic,crc_t10dif,crct10dif_pclmul
+crct10dif_generic      16384  0
+crct10dif_pclmul       16384  1
+cryptd                 24576  2 crypto_simd,ghash_clmulni_intel
+crypto_simd            16384  1 aesni_intel
+deflate                16384  1
+dm_mod                151552  0
+drm                   643072  6 drm_kms_helper,bochs,drm_vram_helper,drm_ttm_helper,ttm
+drm_kms_helper        307200  4 bochs,drm_vram_helper
+drm_ttm_helper         16384  2 bochs,drm_vram_helper
+drm_vram_helper        24576  1 bochs
+efi_pstore             16384  0
+efivarfs               16384  1
+evdev                  24576  2
+ext4                  913408  1
+failover               16384  1 net_failover
+fat                    86016  1 vfat
+fb_sys_fops            16384  1 drm_kms_helper
+floppy                 90112  0
+fuse                  151552  1
+ghash_clmulni_intel    16384  0
+i2c_core              102400  4 drm_kms_helper,psmouse,i2c_piix4,drm
+i2c_piix4              28672  0
+i8042                  36864  0
+input_leds             16384  0
+intel_agp              20480  0
+intel_gtt              24576  1 intel_agp
+intel_pmc_core         53248  0
+intel_rapl_common      28672  1 intel_rapl_msr
+intel_rapl_msr         20480  0
+ip_tables              32768  1
+ip6_tables             36864  2
+ip6t_rpfilter          16384  1
+ipt_rpfilter           16384  1
+irqbypass              16384  1 kvm
+jbd2                  167936  1 ext4
+joydev                 28672  0
+kvm                  1032192  1 kvm_intel
+kvm_intel             344064  0
+led_class              20480  1 input_leds
+libaes                 16384  1 aesni_intel
+libata                294912  3 ata_piix,pata_acpi,ata_generic
+libcrc32c              16384  2 nf_conntrack,nf_tables
+libps2                 20480  2 atkbd,psmouse
+llc                    16384  2 bridge,stp
+loop                   40960  0
+mac_hid                16384  0
+macvlan                28672  0
+mbcache                16384  1 ext4
+mousedev               24576  0
+net_failover           24576  1 virtio_net
+nf_conntrack          176128  1 xt_conntrack
+nf_defrag_ipv4         16384  1 nf_conntrack
+nf_defrag_ipv6         24576  1 nf_conntrack
+nf_log_syslog          20480  2
+nf_tables             262144  65 nft_compat,nft_counter
+nfnetlink              20480  2 nft_compat,nf_tables
+nft_compat             20480  18
+nft_counter            16384  33
+nls_cp437              20480  1
+nls_iso8859_1          16384  1
+overlay               151552  1
+parport                45056  2 parport_pc,ppdev
+parport_pc             32768  0
+pata_acpi              16384  0
+ppdev                  24576  0
+psmouse               167936  0
+pstore                 28672  2 efi_pstore
+qemu_fw_cfg            20480  0
+rtc_cmos               28672  1
+sch_fq_codel           20480  2
+scsi_common            16384  3 scsi_mod,libata,sr_mod
+scsi_mod              266240  3 sd_mod,libata,sr_mod
+sd_mod                 53248  2
+serio                  28672  6 serio_raw,atkbd,psmouse,i8042
+serio_raw              20480  0
+sr_mod                 28672  0
+stp                    16384  1 bridge
+syscopyarea            16384  1 drm_kms_helper
+sysfillrect            16384  1 drm_kms_helper
+sysimgblt              16384  1 drm_kms_helper
+t10_pi                 16384  1 sd_mod
+tap                    28672  0
+tiny_power_button      16384  0
+ttm                    81920  2 drm_vram_helper,drm_ttm_helper
+tun                    61440  0
+vfat                   20480  1
+virtio                 16384  2 virtio_pci,virtio_net
+virtio_net             61440  0
+virtio_pci             24576  0
+virtio_pci_modern_dev    20480  1 virtio_pci
+virtio_ring            36864  2 virtio_pci,virtio_net
+x_tables               53248  9 xt_conntrack,ip6t_rpfilter,nft_compat,xt_LOG,xt_tcpudp,ip6_tables,ipt_rpfilter,xt_pkttype,ip_tables
+xt_conntrack           16384  2
+xt_LOG                 20480  2
+xt_pkttype             16384  2
+xt_tcpudp              20480  7

@@ -52,7 +52,7 @@ Possible instructions are:
 * `r()`: `cd /nix/store/`. This is implicitly the first instruction.
 * `d(name)`: `mkdir $name && cd $name`.
 * `p()`: `cd ..`. May not exit `/nix/store/`.
-* `f(file,mode,name)`: `ln -T $name /nix/store/.links/$hash && [[ ! mode == *x* ]] || chmod +x $name`.
+* `f(hash,mode,name)`: `ln -T /nix/store/.links/$hash $name && [[ ! mode == *x* ]] || chmod +x $name`.
 
 Flip the `linkHM` (multi) map from `hash => [path]` to `path => hash` and process the keys sorted (with `LC_ALL=C`).
 Start with an empty `cwd` stack and no previous path. For each path:
@@ -93,10 +93,12 @@ d hash-name
 It can work by amending an existing `/nix/store/.links/` list, or it can re-create the required parts of it.
 If the links list does not exist already, the `tar`/dir must included the `.restore-links` file; otherwise it should contain the `.prune-links` file.
 
+Note that while a receive is in progress, or if one was aborted and not rolled back, there may be partial store paths, and the dependency closure invariant (that all dependencies of an existing path also exist) may very well be violated. This should be non-critical, since Nix itself won't be accessing the store (and the databases are missing/outdated anyway).
+
 
 ### Description of Implementation
 
-If `/nix/store/.links/` exists, move all files from the temp dir into it, but do keep a list of all moved files.
+If `/nix/store/.links/` exists, move all files from the temp dir into it, but do keep a list of all moved files (edit: or just defer the moving).
 Otherwise, for each entry in `.restore-links`, hard-link the path after the `=` as the hash before the `=` into the temporary directory, then move the temporary directory to `/nix/store/.links/`.
 
 Execute the `.cerate-paths` script by executing the commands as translated above in the sequence they occur in the script. For any `d` or `f` directly following an `r`, add its `name` argument to a list of added store artifacts.
@@ -122,6 +124,13 @@ in {
         src = ./nix-store-send.sh; dir = "bin"; name = "nix-store-send"; isExecutable = true;
         shell = "${pkgs.bash}/bin/bash";
         narHash = "${pkgs.nar-hash}/bin/nar-hash";
+    };
+    nix-store-recv = pkgs.substituteAll {
+        src = ./nix-store-recv.sh; dir = "bin"; name = "nix-store-recv"; isExecutable = true;
+        shell = "${pkgs.bash}/bin/bash";
+        unshare = "${pkgs.util-linux}/bin/unshare";
+        xargs = "${pkgs.findutils}/bin/xargs";
+        genericArgParse = lib.wip.extractBashFunction (builtins.readFile lib.wip.setup-scripts.utils) "generic-arg-parse";
     };
 
     # TODO: implement nix-store-receive and test the pair

@@ -28,6 +28,8 @@ A brief description of what we currently expect the base OS deployment to look l
 * If there is a previous snapshot, then the diff between the snapshots is uploaded to the target device and applied there, otherwise the target device is deployed as a clone of the test system.
 * The target system gets rebooted into one of the container configs; if that fails, it boots into the fallback config.
 
+![](./docs/relations.drawio.svg)
+
 
 ## Repo Layout
 

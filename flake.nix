@@ -7,10 +7,11 @@
 ); inputs = {
 
     # To update »./flake.lock«: $ nix flake update
-    nixpkgs = { url = "github:NixOS/nixpkgs/nixos-unstable"; };
-    wiplib = { url = "github:NiklasGollenstede/nix-wiplib"; };
+    nixpkgs = { url = "github:NixOS/nixpkgs/nixos-22.05"; };
+    wiplib = { url = "github:NiklasGollenstede/nix-wiplib"; inputs.nixpkgs.follows = "nixpkgs"; };
+    nixos-imx = { url = "github:NiklasGollenstede/nixos-imx"; inputs.nixpkgs.follows = "nixpkgs"; inputs.wiplib.follows = "wiplib"; };
 
-    #parent = { type = "indirect"; id = <something that resolves to this repo>; };
+    #parent = { type = "indirect"; id = "host-chain"; ref = "master"; }; # See »./modules/generations.nix.md«!
     # inputs.self.shortRev is only set if the git tree is clean (?)
 
 }; outputs = inputs@{ wiplib, ... }: let patches = {
@@ -25,12 +26,12 @@
 
 }; in inputs.wiplib.lib.wip.patchFlakeInputsAndImportRepo inputs patches ./. (inputs@{ self, nixpkgs, ... }: repo@{ overlays, lib, ... }: let
 
-    systemsFlake = lib.wip.mkSystemsFalke (rec {
+    systemsFlake = lib.wip.mkSystemsFlake (rec {
         #systems = { dir = "${./.}/hosts"; exclude = [ ]; };
         inherit inputs;
         overlayInputs = builtins.removeAttrs inputs [ "parent" ];
         moduleInputs = builtins.removeAttrs inputs [ "parent" "nixpkgs" ];
-        scripts = [ ./utils/install.sh.md ] ++ (lib.attrValues lib.wip.setup-scripts);
+        scripts = (lib.attrValues lib.wip.setup-scripts) ++ [ ./utils/setup.sh ];
     });
 
 in [ # Run »nix flake show --allow-import-from-derivation« to see what this merges to:

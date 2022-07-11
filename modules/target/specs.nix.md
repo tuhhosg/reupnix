@@ -22,53 +22,39 @@ in {
         hash = builtins.substring 0 8 (builtins.hashString "sha256" config.networking.hostName);
 
     in lib.mkIf cfg.enable (lib.mkMerge [ ({
-        # Provide helper script to reboot into a spec:
+        # Default specialization:
 
-        environment.systemPackages = [ (pkgs.writeShellScriptBin "boot-to" ''
-            set -eu ; user=''${1:?'Must be the name of the specialisation to reboot into, or - for the fallback.'}
-            ${pkgs.coreutils}/bin/mkdir -p /data ; ${pkgs.util-linux}/bin/mountpoint -q /data || /run/wrappers/bin/mount /data
-            if [[ $1 == - ]] ; then
-                ${pkgs.coreutils}/bin/rm -f /data/next-specialisation
-            else
-                printf %s $1 >/data/next-specialisation
-            fi
-            ${config.systemd.package}/bin/reboot
-        '') ];
+        specialisation.default.configuration = {
+            th.target.specs.name = "default";
 
-    }) ({
-        # Make specialisations bootable:
+            # Enable receiving of updates:
+            environment.systemPackages = [ pkgs.nix-store-recv ];
 
-        # $ echo test1 >data/next-specialisation
-        boot.initrd.postDeviceCommands = let
-            hash = builtins.substring 0 8 (builtins.hashString "sha256" config.networking.hostName);
-        in lib.mkBefore ''
-            # Read which next-specialisation to boot, if any. And remove the marker, so that the next reboot boots the default again, unless this boot succeeds and a next-specialisation is explicitly set again.
-            mkdir /tmp/data-mnt ; mount -t ext4 /dev/disk/by-partlabel/data-${hash} /tmp/data-mnt
-            if [ -e /tmp/data-mnt/next-specialisation ] ; then (
-                specialisation=$(cat /tmp/data-mnt/next-specialisation)
-                rm /tmp/data-mnt/next-specialisation
-                printf %s "$specialisation" > /run/current-specialisation
-            ) ; fi
-            umount /tmp/data-mnt ; rmdir /tmp/data-mnt
+            #environment.etc.dummy.text = "mega significant change in configuration\n";
+            environment.etc.dummy.text = "super significant change in configuration\n";
+
+            # Test the updating:
+            # * switch the dummy files or make some other detectable change
+            # * run in the repo: nix run .#nix-store-send -- $(nix build .#nixosConfigurations.imx.config.system.build.toplevel --print-out-paths) $(ssh imx -- cat /boot/config) | ssh imx -- nix-store-recv --no-delete --status --verbose
+            # * run in the repo: ssh imx -- nix-store-recv --only-delete --status --verbose
+
+        };
+
+        # Replace the default bootloader entry (which would be the machine config) with the default(/fallback) system config:
+        th.hermetic-bootloader.default = "default";
+
+        # In the "machine config" (only), include the bootloader installer (which then references all the system configs):
+        system.extraSystemBuilderCmds = lib.mkIf (config.specialisation != { }) ''
+            printf '#!%s/bin/bash -e\nexec %s $1 %s\n' "${pkgs.bash}" "${config.th.hermetic-bootloader.builder}" "$out" >$out/install-bootloader
+            chmod +x $out/install-bootloader
         '';
 
-        boot.initrd.postMountCommands = let
-            inherit (config.system.build) extraUtils;
-        in lib.mkAfter ''
-            # Select to boot the current-specialisation instead of the default, if any.
-            echo $stage2Init
-            #setsid ${extraUtils}/bin/ash -c "exec ${extraUtils}/bin/ash < /dev/$console >/dev/$console 2>/dev/$console"
-            if [ -e /run/current-specialisation ] ; then
-                stage2Init=''${stage2Init%/*}/specialisation/$(cat /run/current-specialisation)/init
-            fi
-        '';
 
     }) (lib.mkIf (config.specialisation == { }) {
         # Default configuration within specialisations:
 
         system.nixos.tags = [ cfg.name ];
-        boot.loader.enable = false; # (shared the default boot architecture)
-        system.extraSystemBuilderCmds = "ln -s ${config.system.modulesTree} $out/kernel-modules"; # (disabled by »boot.loader.enable = false«)
+        boot.loader.enable = true; # generate kernel and initramfs, the bootloader won't be evaluated
 
     }) ]);
 

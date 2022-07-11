@@ -27,8 +27,11 @@
 		"blkid", // program / function
 		"blockdev", // program / function
 		"bootable", // word (~= able to boot)
+		"bootcmd", // abbr (boot command)
 		"bootcode", // filename
-		"bootloader", // word
+		"bootcommand", // concat
+		"bootctl", // program
+		"bootloader", "bootloaders", // word
 		"bridgeadapter", // virtual box
 		"bridgedifs", // virtual box
 		"btintel", // kmod
@@ -38,6 +41,7 @@
 		"cflags", // cli arg
 		"chattr", // program / function
 		"checksumming", // word
+		"cmdline", // abbr (command line)
 		"cmds", // abbr commands
 		"colordiff", // program
 		"concat", // abbr
@@ -86,10 +90,12 @@
 		"faketcp", // cli arg
 		"fallocate", // program / function
 		"fdisk", // program
+		"fdtfile", // parameter
 		"fetchpatch", // nix
 		"fetchurl", // nix function
 		"fido2", // kernel module
 		"filesystems", // plural
+		"findutils", // package
 		"firmwareLinuxNonfree", // nixos
 		"fmask", // mount option
 		"fmode", // cli arg
@@ -102,6 +108,7 @@
 		"fusb302", // knod
 		"fuseiso", // program
 		"fusermount", // program
+		"fw_setenv", // program / function
 		"gamemode", // program
 		"gconv", // library
 		"gcroots", // nix
@@ -139,6 +146,7 @@
 		"inodes", // plural
 		"inplace", // cli arg
 		"internalcommands", // virtual box
+		"ints", // plural
 		"iotop", // program
 		"iputils", // package
 		"iwlwifi", // kmod
@@ -150,6 +158,7 @@
 		"keydev", // cli arg
 		"keygen", // program / function
 		"kmod", // program/function
+		"lcrypto", // lib??
 		"LESSOPEN", // env var
 		"libaio", // cli arg
 		"libfido2", // library
@@ -159,6 +168,7 @@
 		"libraspberrypi", // package
 		"libstdc", // library
 		"libstdcxx5", // package
+		"libubootenv", // package
 		"libusb", // cli arg
 		"libx265", // cli arg
 		"likeauth", // cli arg
@@ -167,6 +177,7 @@
 		"logind", // systemd
 		"losetup", // program / function
 		"lowerdir", // mount overlay option
+		"lssl", // lib??
 		"luks", // linux
 		"lusb", // cli arg
 		"machinectl", // program
@@ -227,6 +238,7 @@
 		"ostype", // virtual box
 		"overlayed", // word
 		"overlayfs", // linux
+		"OVMF", // package
 		"pactl", // program
 		"panfrost", // knod
 		"partlabel", // linux
@@ -247,7 +259,9 @@
 		"prometheus", // program
 		"proto", // abbr (protocol)
 		"pubkey", // cli arg
+		"pxefile", // parameter
 		"qview", // program
+		"ramdisk", // concat
 		"ramfs", // linux
 		"randwrite", // cli arg
 		"raspberrypi", // abbr
@@ -267,14 +281,17 @@
 		"rpiboot", // package
 		"rpicm4", // abbr (Raspberry PI Compute Module 4)
 		"rpool", // zfs
+		"rprivate", // parameter
 		"sanoid", // program
 		"saradc", // kmod
 		"sata", // storage protocol
 		"sched", // abbr (scheduler)
 		"screenshotpng", // virtual box
+		"scriptaddr", // parameter
 		"sddm", // program
 		"selfsigned", // cli arg
 		"serialno", // program
+		"setenv", // program / function
 		"seteuid", // cli arg
 		"setsid", // program/function
 		"setuid", // linux
@@ -300,6 +317,7 @@
 		"swapon", // program / function
 		"swraid", // nixos option
 		"syncoid", // program
+		"sysboot", // program
 		"systemd-nspawn", // program
 		"sysv", // kmod
 		"tabsize", // option
