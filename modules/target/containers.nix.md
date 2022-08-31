@@ -104,11 +104,12 @@ in {
 
         }) (lib.mkIf (cfg.rootFS != [ ]) { # Root filesystem + init generic container
 
-            ephemeral = false; # use /var/lib/containers/${name} for / inside the container
+            ephemeral = false; # use /var/lib/nixos-containers/${name} for / inside the container
             path = lib.mkForce "/"; # »${path:-...}/init« gets sourced inside the container to resume the boot process
             # alternatively, replacing »config.system.build.bootStage2« with this should also work:
             bindMounts."/init" = { hostPath = "${pkgs.writeShellScript "foreign-container-init" ''
-                ${pkgs.util-linux}/bin/umount -l /init /nix/store /run/wrappers /nix/var/nix/{daemon-socket,db,gcroots,profiles} # probably need to to this next-to-last
+                ${pkgs.util-linux}/bin/umount -l /init # remove this wrapper
+                ${pkgs.util-linux}/bin/umount -l /nix/store /run/wrappers /nix/var/nix/{daemon-socket,db,gcroots,profiles} # probably need to do this next-to-last
                 exec /init # the actual container init executable
             ''}"; isReadOnly = true; };
 
@@ -137,16 +138,16 @@ in {
 
         # For non-native containers, create an overlayfs where / will be bound to:
         fileSystems = lib.wip.mapMerge (name: cfg: if cfg.rootFS != [ ] then {
-            "/var/lib/containers/${name}" = {
+            "/var/lib/nixos-containers/${name}" = {
                 fsType = "overlay"; device = "overlay";
                 options = [
                     "lowerdir=${lib.concatStringsSep ":" (lib.reverseList cfg.rootFS)}"
                     "workdir=/run/containers/${name}.workdir"
                     "upperdir=/run/containers/${name}"
                 ];
-                depends = cfg.rootFS ++ [ "/run/containers" ];
+                depends = (map toString cfg.rootFS) ++ [ "/run/containers" ];
                 preMountCommands = ''
-                    mkdir -p /var/lib/containers/${name} /run/containers/${name}.workdir /run/containers/${name}
+                    mkdir -p /var/lib/nixos-containers/${name} /run/containers/${name}.workdir /run/containers/${name}
                 '';
             };
         } else { }) cfg.containers;

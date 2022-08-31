@@ -88,8 +88,8 @@ in {
             homepage = "https://github.com/rfc1036/udptunnel";
             description = "Tunnel UDP packets in a TCP connection ";
             license = lib.licenses.gpl2;
-            maintainers = with lib.maintainers; [ ];
-            platforms = with lib.platforms; linux;
+            maintainers = [ ];
+            platforms = lib.platforms.linux;
         };
     };
 }

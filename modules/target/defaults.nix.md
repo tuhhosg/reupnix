@@ -21,13 +21,16 @@ in {
         hash = builtins.substring 0 8 (builtins.hashString "sha256" config.networking.hostName);
     in lib.mkIf cfg.enable (lib.mkMerge [ ({
 
+        ## Enable modules:
         wip.base.enable = true;
         th.hermetic-bootloader.enable = true;
         th.target.fs.enable = true;
         th.target.specs.enable = true;
         th.minify.enable = true; th.minify.etcAsOverlay = true;
         wip.services.dropbear.enable = true;
+        th.target.watchdog.enable = true;
 
+        ## Convenience:
         documentation.enable = false; # sometimes takes quite long to build
         boot.loader.timeout = 1;
 

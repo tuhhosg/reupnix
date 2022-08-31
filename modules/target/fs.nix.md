@@ -42,11 +42,14 @@ in {
 
         wip.fs.disks.partitions."system-${hash}" = { type = "8300"; size = null; order = 500; };
         fileSystems."/system"       = { fsType  =   "ext4";    device = "/dev/disk/by-partlabel/system-${hash}"; neededForBoot = true; options = [ "noatime" "ro" ]; formatOptions = "-O inline_data -E nodiscard -F"; };
-        fileSystems."/nix/store"    = { options = ["bind,ro"]; device = "/system/nix/store"; neededForBoot = implied; };
+        fileSystems."/nix/store"    = { options = [ "bind" "ro" "private" ]; device = "/system/nix/store"; neededForBoot = implied; };
 
-        systemd.tmpfiles.rules = [ # »nixos-containers«/»config.containers« expect these to exist and fail to start without
-            ''d  "/nix/var/nix/db"             0555  root root  -''
-            ''d  "/nix/var/nix/daemon-socket"  0555  root root  -''
+        systemd.tmpfiles.rules = [
+            # Make the »/nix/store« non-enumerable:
+            ''d  /system/nix/store          0751 root 30000 - -''
+            # »nixos-containers«/»config.containers« expect these to exist and fail to start without:
+            ''d  /nix/var/nix/db            0755 root root - -''
+            ''d  /nix/var/nix/daemon-socket 0755 root root - -''
         ];
 
     }) ({
@@ -55,7 +58,7 @@ in {
         wip.fs.disks.partitions."data-${hash}" = { type = "8300"; size = cfg.dataSize; order = 1000; };
 
     }) (lib.mkIf (cfg.dataDir == null) {
-        # Make /data mountable in default spec, to be able to set the next-specialisation marker:
+        # Make /data mountable in default spec:
 
         fileSystems."/data"         = { fsType  =   "ext4";    device = "/dev/disk/by-partlabel/data-${hash}"; neededForBoot = false; options = [ "noatime" "noauto" "nofail" ]; formatOptions = "-O inline_data -E nodiscard -F"; };
 

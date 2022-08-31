@@ -13,3 +13,8 @@ To prepare the microSD card, adjust the `fs.disks.devices.primary.size` in `./ma
 Then put the card in a PI and boot it.
 
 Alternative to running directly as `root` (esp. if `nix` is not installed for root), the above commands can also be run with `sudo` as additional argument before the `--`.
+
+To see the serial console during boot, connect the "debug" microUSB port to a different host, and before booting run:
+```bash
+nix-shell -p tio --run 'tio /dev/ttyUSB2' # (tio uses the correct settings by default)
+```

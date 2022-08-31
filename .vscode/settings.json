@@ -4,11 +4,13 @@
 	"cSpell.diagnosticLevel": "Information", // to find spelling mistakes
 	"cSpell.words": [ // this got a bit out of hand ...
 		"aarch64", // processor architecture
+		"addplot", // latex
 		"adfs", // kmod / file system
 		"affs", // kmod / file system
 		"agetty", // program
 		"ahci", // kmod
 		"alsa", // program
+		"amdgpu", // kmod
 		"analogix", // kmod
 		"anyprot", // option
 		"askpass", // program
@@ -32,12 +34,14 @@
 		"bootcommand", // concat
 		"bootctl", // program
 		"bootloader", "bootloaders", // word
+		"bootx64", // EFI
 		"bridgeadapter", // virtual box
 		"bridgedifs", // virtual box
 		"btintel", // kmod
 		"btqca", // kmod
 		"btusb", // kmod
 		"builtins", // nix
+		"casync", // program
 		"cflags", // cli arg
 		"chattr", // program / function
 		"checksumming", // word
@@ -70,10 +74,13 @@
 		"dirlinks", // cli arg
 		"dmask", // mount option
 		"dmode", // cli arg
+		"dmsetup", // program
 		"dockremap", // option
 		"dontUnpack", // nixos
 		"dosfstools", // package
+		"dotglob", // bash
 		"dpkg", // program
+		"drawio", // program
 		"dropbear", // program
 		"dtbs", // file type
 		"dtoverlay", // option
@@ -90,10 +97,12 @@
 		"faketcp", // cli arg
 		"fallocate", // program / function
 		"fdisk", // program
+		"FDTDIR", // abbr (flattended device tree directory)
 		"fdtfile", // parameter
 		"fetchpatch", // nix
 		"fetchurl", // nix function
 		"fido2", // kernel module
+		"fileinfo", // program
 		"filesystems", // plural
 		"findutils", // package
 		"firmwareLinuxNonfree", // nixos
@@ -125,6 +134,7 @@
 		"grafana", // program
 		"gtkrc", // file name
 		"hardlink", "hardlinks",  // vs. soft-/symlink
+		"hardlinking", // word
 		"hdmi", // protocol
 		"hdparm", // program
 		"HISTCONTROL", // bash var
@@ -168,6 +178,7 @@
 		"libraspberrypi", // package
 		"libstdc", // library
 		"libstdcxx5", // package
+		"libsystemd", // concat
 		"libubootenv", // package
 		"libusb", // cli arg
 		"libx265", // cli arg
@@ -183,6 +194,7 @@
 		"machinectl", // program
 		"macvlans", // linux
 		"mbuffer", // program
+		"mdmon", // program
 		"mdns", // abbr
 		"mgmt", // abbr (management)
 		"mindepth", // cli arg (find)
@@ -197,6 +209,7 @@
 		"modifyvm", // virtual box
 		"mountpoint", // program / function
 		"mpris", // abbr
+		"msecs", // abbr (milliseconds)
 		"mtab", // file name
 		"multiplatform", // nix
 		"nameserver", // cli arg
@@ -208,6 +221,7 @@
 		"networkd", // daemon
 		"niklas", // name
 		"nilfs2", // kmod / file system
+		"NIX_SSHOPTS", // nix
 		"NIXCFG", // abbr
 		"nixos", // (duh)
 		"nixpkgs", // nix
@@ -224,6 +238,7 @@
 		"noprofile", // cli arg
 		"notrunc", // cli arg
 		"nouserok", // cli arg
+		"NOWAYOUT", // kernel config
 		"nscd", // daemon
 		"nssmdns", // protocol
 		"ntfs", // kmod / file system
@@ -241,6 +256,7 @@
 		"OVMF", // package
 		"pactl", // program
 		"panfrost", // knod
+		"partitionings", // plural
 		"partlabel", // linux
 		"partprobe", // program / function
 		"pbkdf", // cli arg
@@ -261,6 +277,7 @@
 		"pubkey", // cli arg
 		"pxefile", // parameter
 		"qview", // program
+		"rabbitmq", // package
 		"ramdisk", // concat
 		"ramfs", // linux
 		"randwrite", // cli arg
@@ -271,6 +288,7 @@
 		"rdesktop", // program
 		"readarray", // bash
 		"realpath", // program / function
+		"reconix", // this repo
 		"redistributable", // word
 		"resolv", // file name
 		"resolvconf", // program
@@ -282,6 +300,7 @@
 		"rpicm4", // abbr (Raspberry PI Compute Module 4)
 		"rpool", // zfs
 		"rprivate", // parameter
+		"runtimes", // plural
 		"sanoid", // program
 		"saradc", // kmod
 		"sata", // storage protocol
@@ -296,6 +315,7 @@
 		"setsid", // program/function
 		"setuid", // linux
 		"sgdisk", // program
+		"shopt", // bash
 		"showvminfo", // virtual box
 		"SIGRTMIN", // linux
 		"sigs", // cli arg
@@ -326,6 +346,7 @@
 		"tcpc", // abbr (TCP client)
 		"tcpm", // knod
 		"tcps", // plural
+		"testkey", // concat
 		"TGMK", // unit suffixes
 		"timedated", "timedate", // daemon
 		"timefmt", // cli arg
@@ -336,6 +357,9 @@
 		"tmpfiles", // systemd
 		"tmpfs", // linux
 		"toplevel", // nix
+		"traefik", // package
+		"ttymxc", // linux
+		"typec", // abbr (USB Type-C)
 		"typecode", // cli arg
 		"tzdata", // pckage
 		"TZDIR", // env var
@@ -371,6 +395,7 @@
 		"vmdk", // file type (virtual disk format)
 		"VSIX", // abbr
 		"vulkan", // program
+		"wdctl", // program
 		"wikipedia", // website
 		"wipefs", // program / function
 		"wiplib", // name / abbr (WIP library)

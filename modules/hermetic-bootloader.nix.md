@@ -16,13 +16,14 @@ dirname: inputs: { config, pkgs, lib, ... }: let inherit (inputs.self) lib; in l
 in {
 
     options.th = { hermetic-bootloader = {
-        enable = lib.mkEnableOption "TODO: what";
+        enable = lib.mkEnableOption "building the bootloader configuration hermetically in Nix";
         loader = lib.mkOption { description = "The boot loader to generate the configuration for."; type = lib.types.enum [ "systemd-boot" "uboot-extlinux" ]; default = "systemd-boot"; };
         extraFiles = lib.mkOption { description = "Additional files to include in the boot partition."; type = lib.types.attrsOf lib.types.path; default = { }; };
         extraGptOffset = lib.mkOption { description = "Additional space to clear at the start and end of the boot disk, for firmware and such."; type = lib.types.ints.unsigned; default = 0; };
 
         uboot.base = lib.mkOption { description = "... The result of calling »pkgs.buildUboot« (or equivalent)."; type = lib.types.nullOr lib.types.package; default = null; };
         uboot.env = lib.mkOption { description = "Base u-boot env. Must set »scriptaddr«, »kernel_addr_r«, »fdt_addr_r«, »ramdisk_addr_r«, and »fdtfile« (unless the ».base« u-boot already configures those)."; type = lib.types.attrsOf lib.types.string; default = null; };
+        uboot.extraConfig = lib.mkOption { description = "."; type = lib.types.listOf lib.types.string; default = [ ]; };
         uboot.mmcDev = lib.mkOption { description = "MMC device number that u-boot should use."; type = lib.types.ints.between 0 128; default = null; };
         uboot.result = lib.mkOption { description = "The resulting reconfigured u-boot. For a rPI, this can be passed back as ».extraFiles« (with a matching »config.txt«), other boards may need to directly flash this somewhere."; type = lib.types.nullOr lib.types.package; };
 
@@ -56,6 +57,7 @@ in {
         slots.disk = lib.mkOption { description = ""; type = lib.types.str; default = "primary"; };
         slots.size = lib.mkOption { description = "Size of the boot slots."; type = lib.types.str; default = "64M"; };
         slots.number = lib.mkOption { description = "Number of boot slots."; type = lib.types.ints.between 2 8; default = 2; };
+        slots.currentLabel = lib.mkOption { description = "FS label of the boot slot written by the current config build. Must be unique to each build. This can't refer to the build output, as that would create a loop. Using the input sources works (as they should be the only thing dictating the build output), but can cause unnecessary changes to »/etc/fstab«, thus »/etc«, and the bootloader."; type = lib.types.str; default = "bt-${builtins.substring 11 8 inputs.self.outPath}"; };
 
         builder = lib.mkOption { internal = true; type = lib.types.package; readOnly = true; };
 
@@ -65,7 +67,10 @@ in {
 
         builder = (pkgs.runCommand "hermetic-${cfg.loader}" {
             outputs = [ "out" "tree" "init" ];
-        } (lib.wip.substituteImplicit { inherit pkgs; scripts = [ ./hermetic-bootloader.sh ]; context = { inherit pkgs config inputs cfg; }; })); # inherit (builtins) trace;
+        } (lib.wip.substituteImplicit { inherit pkgs; scripts = [ ./hermetic-bootloader.sh ]; context = {
+            inherit pkgs config inputs cfg;
+            # inherit (builtins) trace;
+        }; }));
 
     in lib.mkIf cfg.enable (lib.mkMerge [ ({
 
@@ -87,10 +92,13 @@ in {
         wip.fs.disks.partitions = lib.wip.mapMerge (index: {
             "boot-${toString index}-${hash}" = { type = "ef00"; size = cfg.slots.size; index = index; order = 1500 - index; disk = cfg.slots.disk; }; # (ef00 = EFI boot ; 8301 = Linux reserved)
         }) (lib.range 1 cfg.slots.number);
-        wip.fs.disks.devices.${cfg.slots.disk}.gptOffset = cfg.extraGptOffset + (32 * (cfg.slots.number + 1)); # Make room for the slot-individual partition tables.
+        wip.fs.disks.devices.${cfg.slots.disk} = {
+            gptOffset = cfg.extraGptOffset + (32 * (cfg.slots.number + 1)); # Make room for the slot-individual partition tables.
+            allowLarger = false; # Switching the partition tables would fail if the physical disk size were to differ from the declared one.
+        };
 
-        # Mount the current boot slot (as identified by the build input, since referring to the output would create a loop):
-        fileSystems."/boot" = { fsType = "vfat"; device = "/dev/disk/by-label/bt-${builtins.substring 11 8 inputs.self.outPath}"; neededForBoot = false; options = [ "ro" "nofail" "umask=0022" ]; };
+        # Mount the current boot slot:
+        fileSystems."/boot" = { fsType = "vfat"; device = "/dev/disk/by-label/${cfg.slots.currentLabel}"; neededForBoot = false; options = [ "ro" "nofail" "umask=0022" ]; };
 
     }) ({
 
@@ -98,19 +106,22 @@ in {
 
     }) (lib.mkIf (cfg.loader == "uboot-extlinux") {
 
+        # https://source.denx.de/u-boot/u-boot/-/blob/v2022.04/doc/develop/distro.rst
         th.hermetic-bootloader.uboot.result = pkgs.uboot-with-mmc-env (let
             bootcmd = ''sysboot mmc ${toString cfg.uboot.mmcDev}:1 fat ''${scriptaddr} /extlinux/extlinux.conf''; # (Only) process the extlinux conf on /dev/mmc1p1:
         in {
             base = cfg.uboot.base; envMmcDev = cfg.uboot.mmcDev;
-            defaultEnv = cfg.uboot.env // { inherit bootcmd; };
-            extraConfig = [ ''CONFIG_BOOTCOMMAND="${bootcmd}"'' ]; # While, when the same variable is defined multiple times, uboot generally uses the last definition, »env default <var>« seems to use the first (which should probably be considered a bug). To avoid inconsistency with »bootcmd«, set »CONFIG_BOOTCOMMAND«, but also define it in defaultEnv for further programmatic use.
-            # How difficult it is to change the default env also shows that defining a default env per application is not really intended by uboot
+            defaultEnv = cfg.uboot.env // { inherit bootcmd; }; # How difficult it is to change the default env also shows that defining a default env per application is not really intended by uboot
+            extraConfig = [
+                ''CONFIG_BOOTCOMMAND="${bootcmd}"'' # While, when the same variable is defined multiple times, uboot generally uses the last definition, »env default <var>« seems to use the first (which should probably be considered a bug). To avoid inconsistency with »bootcmd«, set »CONFIG_BOOTCOMMAND«, but also define it in defaultEnv for further programmatic use.
+            ] ++ cfg.uboot.extraConfig;
         });
         wip.fs.disks.partitions."uboot-env-${hash}" = {
             type = "ef02"; index = 128; order = 2000; alignment = 1;
             position = toString (cfg.uboot.result.envOffset / 512);
             size = toString (cfg.uboot.result.envSize / 512);
         };
+        wip.fs.disks.postFormatCommands = "cat ${cfg.uboot.result.mkEnv { }} >/dev/disk/by-partlabel/uboot-env-${hash}\n";
         environment.etc."fw_env.config".text = "/dev/disk/by-partlabel/uboot-env-${hash} 0x0 0x${lib.concatStrings (map toString (lib.toBaseDigits 16 cfg.uboot.result.envSize))}\n";
 
     }) ({

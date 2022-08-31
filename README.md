@@ -1,32 +1,33 @@
 
-# Lightweight & Reconfigurable Container OS
+# reCoNix: A Reconfigurable, Upgrade-Transactional, Fully-Reproducible Container Runtime for Multi-Purpose IoT Devices based on NixOS Linux
 
-This is the (very much still work in progress) repository for my master thesis implementation.
-From the proposed abstract:
+This repository contains the practical contributions of my master thesis.
+The abstract:
 
-> We [aim to develop] a statically configured container runtime that:
-> * reduces runtime overhead, by doing analytical and setup tasks ahead of time and outside the execution environment
-> * allows switching between configurations, while minimizing deployment overhead (storage/transmission)
-> * requires the containers to declare their real-time requirements, such that they can be statically analyzed and monitored during execution
-> * provides containers direct access to dedicated hardware
-> * statically configures low-overhead/jitter communication between containers
+> This work presents mechanisms that make NixOS-Linux safer and more efficient as a multi-configuration container deployment system for IoT devices.
+>
+> From research satellites to manufacturing equipment there are many situations where embedded Linux systems need to perform different tasks at different times.
+>
+> Embedded devices often have network access, but can not be accessed physically.
+> To cater to their changing tasks, the devices need to be updated over the network, and the network updates must never leave the devices in non-functioning states.
+> When the required functionality changes frequently, and updates are expensive to conduct, it is advantageous if devices can be reconfigured without needing to be updated from an external source.
+>
+> Supplying remote updates safely in ways that can not render the device unusable and storing multiple device configurations concurrently is not a trivial task.
+> Approaches like A/B-partitioning and containerization are used in practice, but do not solve the combination of these two problems sufficiently well.
+>
+> The NixOS Linux distribution is uniquely suited for granular service composition, deep system integration, parallel deployments, and reproducibility.
+> But NixOS also has properties that hinder its adoption in the field of IoT.
+>
+> This thesis addresses these,
+> by suggesting a configuration model that deploys multiple systems to the same device, where each system is integrated with its own set of applications and containers;
+> by demonstrating a more efficient transfer mechanism for NixOS updates;
+> by building a bootloader configuration that can safely switch between concurrently installed systems and can be updated in an atomic transaction;
+> and by reducing NixOS's installation size significantly.
+>
+> With these and a few future improvements in place, NixOS is a suitable bases for safely updatable, multi-configuration IoT devices.
 
-So far, this uses NixOS to achieve the first two points -- more to follow.
-
-
-## Design (so far)
-
-A brief description of what we currently expect the base OS deployment to look like:
-
-* Multiple sets of container configurations are provided as input.
-* A container configuration is a set of containers, plus a declaration of how to link them to each other, available hardware, and the outside world.
-* A container is a file system tree (linux installation minus kernel), plus again some declaration how to start/run it.
-* All containers are packed as nix build outputs in the nix store (and are thereby automatically content-deduplicated on a per-file basis).
-* A fallback NixOS configuration plus one sub-configuration per container configurations is built.
-* The set of NixOS configs is copied to a deployment test system; a snapshot is taken.
-* The configuration is tested on the test system.
-* If there is a previous snapshot, then the diff between the snapshots is uploaded to the target device and applied there, otherwise the target device is deployed as a clone of the test system.
-* The target system gets rebooted into one of the container configs; if that fails, it boots into the fallback config.
+The configuration model is implemented by the layout of the individual hosts, [`importMachineConfig`](./lib/misc.nix), and [`modules/target/specs.nix.md`](./modules/target/specs.nix.md). It is also sketched in the figure below.
+[`/home/user/dev/misc/reconix/overlays/nix-store-send.nix.md`](.//home/user/dev/misc/reconix/overlays/nix-store-send.nix.md) implements the transfer mechanism, [`modules/hermetic-bootloader.nix.md`](./modules/hermetic-bootloader.nix.md) implements the bootloader configuration, and [`modules/minify.nix.md`](./modules/minify.nix.md) realizes the reduction in installation size.
 
 ![](./docs/relations.drawio.svg)
 
@@ -49,6 +50,8 @@ The modules are inactive by default, and are designed to be mostly independent f
 
 [`./utils/`](./utils/) contains the installation and maintenance scripts/functions. These are wrapped by the flake to have access to variables describing a specific host, and thus (with few exceptions) shouldn't be called directly.
 See `apps` and `devShells` exported by the flake, plus the [installation](#installation--initial-setup) section below.
+
+[`./checks/`](./checks/) contains tests and evaluations. These are built as part of `nix flake check` and can individually be built and executed by running `nix run .#check:<name> -- <args>`.
 
 
 ## Installation / Initial Setup
@@ -81,16 +84,9 @@ lib = lib { inherit pkgs; inherit (pkgs) lib; }
 ```
 
 
-### TODOs
+### Nix store deduplication
 
-
-
-### Observations
-
-* With `autoOptimiseStore`, nix deduplicates the files across all derivations in the store based on their content's hash (`nix-hash --type sha256 --base32 $file`).
-	* All the hardlinks are stored in a (consequently quite big) directory (`/nix/store/.links`). Is that efficient? What are the lookup times in a dir with several 100k files?
-	* It goes so far as to even deduplicate symlinks. Is this worth it for symlinks? Whats the size of a symlink vs a hardlink?
-	* I assume derivations are deduped when being copied into the store?
+To show the effect of deduplication on a `/nix/store/`, run:
 ```bash
  is=0 ; would=0 ; while read perm links user group size rest ; do is=$(( is + size )) ; would=$(( would + (links - 1) * size )) ; done <<<"$(ls -Al /nix/store/.links | tail -n +2)" ; echo "Actual size: $is ; without dedup: $would ; gain: $(bc <<< "scale=2 ; $would/$is")"
 ```

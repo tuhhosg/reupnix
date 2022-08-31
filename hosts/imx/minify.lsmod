@@ -1,0 +1,33 @@
+authenc                16384  1 caam_jr
+caam                   28672  1 caam_jr
+caam_jr               180224  0
+caamalg_desc           40960  1 caam_jr
+caamhash_desc          16384  1 caam_jr
+caamkeyblob_desc       16384  1 caam_jr
+can_dev                36864  1 flexcan
+crct10dif_ce           20480  1
+crypto_engine          20480  1 caam_jr
+dw_hdmi_cec            16384  0
+error                  24576  7 caamalg_desc,secvio,caamkeyblob_desc,caamhash_desc,caam,caam_jr,fsl_jr_uio
+flexcan                32768  0
+fsl_jr_uio             20480  0
+fuse                  131072  1
+imx_dsp_rproc          20480  0
+imx8_media_dev         20480  0
+libdes                 24576  1 caam_jr
+macvlan                32768  0
+overlay               122880  1
+rng_core               24576  1 caam_jr
+secvio                 20480  0
+snd_soc_fsl_asoc_card    28672  0
+snd_soc_fsl_asrc       40960  1 snd_soc_fsl_easrc
+snd_soc_fsl_aud2htx    16384  2
+snd_soc_fsl_easrc      45056  2
+snd_soc_fsl_micfil     40960  2
+snd_soc_fsl_sai        40960  4
+snd_soc_fsl_xcvr       32768  2
+snd_soc_imx_audmux     16384  1 snd_soc_fsl_asoc_card
+snd_soc_imx_card       20480  0
+snd_soc_imx_hdmi       16384  0
+snd_soc_wm8960         49152  1
+tap                    32768  0

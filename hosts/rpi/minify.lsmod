@@ -1,0 +1,75 @@
+bcm_phy_lib            28672  1 broadcom
+bcm2711_thermal        16384  0
+bcm2835_mmal_vchiq     36864  1 bcm2835_v4l2
+bcm2835_v4l2           45056  0
+bluetooth             647168  5 btqca,btsdio,hci_uart,btbcm
+brcmfmac              323584  0
+brcmutil               20480  1 brcmfmac
+bridge                278528  0
+broadcom               24576  1
+btbcm                  28672  1 hci_uart
+btqca                  24576  1 hci_uart
+btsdio                 20480  0
+cec                    57344  1 vc4
+cfg80211              892928  1 brcmfmac
+clk_raspberrypi        16384  7
+crct10dif_ce           20480  1
+dm_mod                143360  0
+drm                   634880  3 drm_kms_helper,vc4
+drm_kms_helper        294912  2 vc4
+ecc                    36864  1 ecdh_generic
+ecdh_generic           16384  1 bluetooth
+fuse                  147456  1
+genet                  69632  0
+hci_uart              118784  0
+i2c_bcm2835            20480  0
+ip_tables              32768  1
+ip6_tables             32768  2
+ip6t_rpfilter          16384  1
+iproc_rng200           16384  0
+ipt_rpfilter           16384  1
+libcrc32c              16384  2 nf_conntrack,nf_tables
+llc                    20480  2 bridge,stp
+macvlan                32768  0
+mc                     65536  3 videodev,videobuf2_v4l2,videobuf2_common
+mdio_bcm_unimac        20480  0
+nf_conntrack          180224  1 xt_conntrack
+nf_defrag_ipv4         16384  1 nf_conntrack
+nf_defrag_ipv6         24576  1 nf_conntrack
+nf_log_syslog          28672  2
+nf_tables             217088  65 nft_compat,nft_counter
+nfnetlink              20480  2 nft_compat,nf_tables
+nft_compat             20480  18
+nft_counter            16384  33
+nls_cp437              20480  1
+nls_iso8859_1          16384  1
+nvmem_rmem             16384  0
+overlay               139264  1
+pcie_brcmstb           24576  0
+pwm_bcm2835            16384  0
+raspberrypi_cpufreq    16384  0
+raspberrypi_hwmon      16384  0
+reset_raspberrypi      16384  1
+rfkill                 40960  3 bluetooth,cfg80211
+rng_core               24576  1 iproc_rng200
+sch_fq_codel           28672  6
+snd_bcm2835            32768  0
+snd_soc_hdmi_codec     24576  2
+stp                    20480  1 bridge
+tap                    32768  0
+uio                    24576  1 uio_pdrv_genirq
+uio_pdrv_genirq        20480  0
+vc4                   249856  4
+vchiq                 344064  2 snd_bcm2835,bcm2835_mmal_vchiq
+videobuf2_common       65536  4 videobuf2_vmalloc,videobuf2_v4l2,bcm2835_v4l2,videobuf2_memops
+videobuf2_memops       20480  1 videobuf2_vmalloc
+videobuf2_v4l2         32768  1 bcm2835_v4l2
+videobuf2_vmalloc      20480  1 bcm2835_v4l2
+videodev              270336  3 videobuf2_v4l2,bcm2835_v4l2,videobuf2_common
+x_tables               49152  9 xt_conntrack,ip6t_rpfilter,nft_compat,xt_LOG,xt_tcpudp,ip6_tables,ipt_rpfilter,xt_pkttype,ip_tables
+xhci_pci               24576  0
+xhci_pci_renesas       20480  1 xhci_pci
+xt_conntrack           16384  2
+xt_LOG                 20480  2
+xt_pkttype             16384  2
+xt_tcpudp              20480  7

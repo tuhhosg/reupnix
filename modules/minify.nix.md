@@ -7,8 +7,8 @@ This is a collection of config snippets to decrease the closure size of a NixOS 
 
 ## Status
 
-This currently produces an installation whose root FS takes ~250MB on ext4 (`-O inline_data` saves about 5%).
-The by far biggest package is currently `perl` with almost 60MB. Once `update-users-groups.pl` is replaced with a static file generator, perl should disappear.
+This currently produces an installation whose root FS takes ~150MB on ext4 (`-O inline_data` saves about 5%).
+The by far biggest pain to remove was `perl` (see all the references below), but its almost 60MB large.
 
 
 ## Implementation
@@ -79,7 +79,7 @@ in {
 
             environment.includeRequiredPackages = lib.mkDefault false; # see nixpkgs/nixos/modules/config/system-path.nix
             environment.defaultPackages = lib.mkDefault [ ]; # default: nano perl rsync strace
-            environment.systemPackages = (with pkgs; [ coreutils ]); # really no fun without
+            environment.systemPackages = [ pkgs.coreutils ]; # really no fun without
 
             documentation.enable = lib.mkDefault false; # this has an impact across the board
             documentation.man.enable = lib.mkDefault config.documentation.enable;
@@ -107,8 +107,8 @@ in {
             #system.extraSystemBuilderCmds = lib.mkForce ""; # For output path stability (the path not changing unless something actually changed) it is important to not just remove this from the build output but also to not even include it in the input. Without this, changes in the input sources do not immediately cause the toplevel derivation to change.
             system.disableInstallerTools = true;
             systemd.tmpfiles.rules = [ # »nixos-containers«/»config.containers« expect these to exist and fail to start without
-                ''d  "/nix/var/nix/db"             0555  root root  -''
-                ''d  "/nix/var/nix/daemon-socket"  0555  root root  -''
+                ''d  /nix/var/nix/db            0755 root root - -''
+                ''d  /nix/var/nix/daemon-socket 0755 root root - -''
             ];
             wip.base.includeInputs = false;
         });
@@ -194,6 +194,9 @@ in {
             #i18n.supportedLocales = [ "C.UTF-8/UTF-8" ]; i18n.defaultLocale = "C.UTF-8/UTF-8";
             i18n.supportedLocales = [ ]; i18n.defaultLocale = "C";
             # ... there is quite a bit more to be done here, often within packages ...
+            nixpkgs.overlays = [ (final: prev: {
+                util-linux = prev.util-linux.override { nlsSupport = false; };
+            }) ];
         });
 
         useSimpleBash = ({
@@ -232,7 +235,7 @@ in {
             # The new etc script must run before any write to »/etc«.
             system.activationScripts.etc = lib.mkForce "";
             system.activationScripts."AA-etc" = { deps = [ "specialfs" ]; text = ''
-                mkdir -pm 000 /run/etc-overlay ; mkdir -p 755 /run/etc-overlay/{workdir,upperdir}
+                mkdir -pm 000 /run/etc-overlay ; mkdir -p -m 755 /run/etc-overlay/{workdir,upperdir}
                 mount -t overlay overlay -o lowerdir=${config.system.build.etc}/etc,workdir=/run/etc-overlay/workdir,upperdir=/run/etc-overlay/upperdir /etc
             ''; };
             boot.initrd.kernelModules = [ "overlay" ]; # the activation scripts are run between initrd and systemd, so apparently the module must (have been) loaded in initrd
@@ -252,7 +255,6 @@ in {
             environment.etc.NIXOS.text = ""; # some tooling wants this to exist
             systemd.services.systemd-tmpfiles-setup.serviceConfig.ExecStart = [ "" "systemd-tmpfiles --create --remove --boot --exclude-prefix=/dev --exclude-prefix=/etc" ];
             environment.etc.dropbear = lib.mkIf config.wip.services.dropbear.enable { source = "/run/user/0"; };
-
         });
 
         staticUsers = ({
@@ -317,6 +319,21 @@ in {
             system.build.initialRamdiskSecretAppender = lib.mkForce "";
         });
 
+        stripInitrd = ({
+            description = ''
+                Remove some probably-not-needed things from the initramfs.
+            '';
+            enableByDefault = false; # TODO: while an initrd with these modifications is being built, it is not the one actually used ...
+
+            # Setting the files in bin/ to true is required for the test to pass, but is otherwise probably a bad idea (could use the »extraUtilsCommandsTest« for deleting ...)
+            boot.initrd.extraUtilsCommands = lib.mkAfter ''
+                echo "#!$out/bin/true" > $out/dmsetup
+                echo "#!$out/bin/true" > $out/lvm
+                echo "#!$out/bin/true" > $out/mdadm
+                echo "#!$out/bin/true" > $out/mdmon
+            ''; # TODO: lib/libsystemd* seems unnecessary in initrd(?)
+        });
+
         declarativeContainersOnly = ({
             description = ''
                 Remove imperative »nixos-container«s and break reloading of containers. Declarative containers themselves still work.
@@ -365,6 +382,7 @@ in {
                     libfido2 = null;
                     p11-kit = null;
                 });
+                util-linux = prev.util-linux.override { systemdSupport = false; systemd = null; };
             }) ];
             services.nscd.enable = false; system.nssModules = lib.mkForce [ ];
             systemd.suppressedSystemUnits = [ # (the test to automatically exclude these does for some reason not work)
@@ -401,13 +419,15 @@ in {
             th.minify.shrinkKernel.overrideConfig = {
                 CRYPTO_USER_API_HASH = "m"; AUTOFS4_FS = "m"; # else assertion fails
                 SATA_AHCI = "m"; # »ahci« module
+                OVERLAY_FS = "m"; # »overlay« module
+                BLK_DEV_LOOP = "m"; # »loop« module
             };
 
-            boot.kernelPackages = let
+            boot.kernelPackages = lib.mkOverride 80 (let # (more important than normal, but not yet force)
                 base = cfg.shrinkKernel.baseKernel;
                 configfile = pkgs.stdenv.mkDerivation {
                     inherit (base) version src; pname = "linux-localmodconfig";
-                    inherit (base.configfile) depsBuildBuild nativeBuildInputs;
+                    inherit (if lib.isAttrs base.configfile then base.configfile else base) depsBuildBuild nativeBuildInputs;
                     baseConfig = base.configfile; usedModules = cfg.shrinkKernel.usedModules;
                     overrideConfig = lib.concatStringsSep " " (lib.mapAttrsToList (k: v: if v == null then "" else "CONFIG_${k}=${v}") cfg.shrinkKernel.overrideConfig);
                     buildPhase = ''( set -x
@@ -423,7 +443,7 @@ in {
                     inherit (base) version src; inherit configfile;
                     allowImportFromDerivation = true; # This allows parsing the config file (after building it), but to what end?
                 };
-            in pkgs.linuxPackagesFor kernel.kernel;
+            in pkgs.linuxPackagesFor kernel.kernel);
 
             boot.initrd.includeDefaultModules = false; # we don't need most of them, and thus didn't build them
             boot.initrd.availableKernelModules = [ "ahci" "sd_mod" ];

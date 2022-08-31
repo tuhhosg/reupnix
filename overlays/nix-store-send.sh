@@ -1,9 +1,9 @@
 #!@shell@
-set -eu ; { { # Normal output/logging (anything written to fd1) will go to stderr, program stream output needs to be written to fs3 » >&3 «.
+set -eu ; { { # Normal output/logging (anything written to fd1) will go to stderr, program stream output needs to be written to fs3 (» >&3 «).
 
 ## Creates a multi-map called »__ret__« (in the calling scope) that, for all files in a set of artifacts, contains the hash of the file as kay and a »//« separated list of all paths linking to that file as value.
 function find-files { # ...: paths
-    paths=( "$@" ) ; declare -g -A __ret__=( ) ; [[ $# != 0 ]] || return
+    paths=( "$@" ) ; declare -g -A __ret__=( ) ; [[ $# != 0 ]] || return 0
     while IFS= read -r -d $'\0' path ; do
         path=${path/\/nix\/store\//}
         while [[ $path == *//* ]] ; do path=${path/\/\//\/} ; done # replace any »//+« by »/« (shouldn't happen)
@@ -27,7 +27,7 @@ function normalize-paths {( set -eu # 1: paths
 ## Given a list of store paths as arguments, outputs a »\n« terminated, sorted, and deduplicated list of all the store paths they depend on.
 function resolve-dependencies {( set -eu # ...: paths
     { for path in "$@" ; do
-        nix path-info -r /nix/store/"$path" | while IFS= read -r path ; do
+        @nix@ --offline path-info -r /nix/store/"$path" | while IFS= read -r path ; do
             printf "%s\n" "${path/\/nix\/store\//}"
         done
     done ; } | LC_ALL=C sort | uniq
@@ -63,63 +63,108 @@ function list-complement {( set -eu # 1: base, 2: remove
     # this could be done a lot more efficient (esp. when both lists are already sorted)
 )}
 
+function prepare-sending {
 
-wantedTop=(   $( normalize-paths "${1:?"Required: The colon-separated list of wanted store artifacts."}" ) )
-existingTop=( $( normalize-paths "${2:?"Required: The colon-separated list of existing store artifacts."}" ) )
-if [[ "${wantedTop[@]}" == "${existingTop[@]}" ]] ; then echo "The wanted and existing arguments are identical" ; exit 1 ; fi
+    generic-arg-parse "$@"
 
-wantedArts=$(resolve-dependencies "${wantedTop[@]}") # artifacts we need to have
-#    declare -p wantedArts
-existingArts=$(resolve-dependencies "${existingTop[@]}") # artifacts we currently have
-#    declare -p existingArts
+    beforeTop=( $( normalize-paths "${argv[0]:?"Required: Store components expected to exist before applying the stream (as colon-separated list)."}" ) )
+    afterTop=(  $( normalize-paths "${argv[1]:?"Required: Store components that will instead exist after applying the stream (as colon-separated list)."}" ) )
+    if [[ "${afterTop[@]}" == "${beforeTop[@]}" ]] ; then echo "The »after« and »before« arguments are identical" ; exit 1 ; fi
 
-createArts=$(list-complement "$wantedArts" "$existingArts") # artifacts we create
-#    declare -p createArts
-pruneArts=$(list-complement "$existingArts" "$wantedArts") # artifacts we keep
-#    declare -p pruneArts
-keepArts=$(list-complement "$existingArts" "$pruneArts") # artifacts we no longer need
-#    declare -p keepArts
+    afterComps=$( resolve-dependencies "${afterTop[@]}" ) # artifacts we need to have
+    #    declare -p afterComps
+    beforeComps=$( resolve-dependencies "${beforeTop[@]}" ) # artifacts we currently have
+    #    declare -p beforeComps
 
-find-files $createArts ; s=$(declare -p __ret__) ; eval "${s/__ret__/linkHM}" # files linked from artifacts that we create (i.e. will create new links to)
-#    declare -p linkHM
-find-files $keepArts ; s=$(declare -p __ret__) ; eval "${s/__ret__/keepHM}" # files linked from artifacts that we keep
-#    declare -p keepHM
-find-files $pruneArts ; s=$(declare -p __ret__) ; eval "${s/__ret__/oldHM}" # files linked from artifacts that we can delete
-#    declare -p oldHM
+    createComps=$( list-complement "$afterComps" "$beforeComps" ) # artifacts we create
+    #    declare -p createComps
+    pruneComps=$( list-complement "$beforeComps" "$afterComps" ) # artifacts we keep
+    #    declare -p pruneComps
+    keepComps=$( list-complement "$beforeComps" "$pruneComps" ) # artifacts we no longer need
+    #    declare -p keepComps
 
-pruneHL=$(list-complement "$(printf '%s\n' "${!oldHM[@]}")" "$(printf '%s\n' "${!keepHM[@]}")"$'\n'"$(printf '%s\n' "${!linkHM[@]}")") # files we no longer need
-#    declare -p pruneHL
-uploadHL=$(list-complement "$(printf '%s\n' "${!linkHM[@]}")" "$(printf '%s\n' "${!keepHM[@]}")"$'\n'"$(printf '%s\n' "${!oldHM[@]}")") # files we need but don't have
-#    declare -p uploadHL
-declare -A uploadHM=( ) ; [[ ! $uploadHL ]] || eval 'uploadHM=( ['"${uploadHL//$'\n'/']="x" ['}"']="x" )' # (the above as map <hash,"x">)
-#    declare -p uploadHM
-declare -A restoreHM=( ) ; for hash in "${!linkHM[@]}" ; do [[ ${uploadHM[$hash]:-} ]] || restoreHM[$hash]=${linkHM[$hash]} ; done # files we need and have (just not in the .links dir)
-#    declare -p restoreHM
+    find-files $createComps ; s=$(declare -p __ret__) ; eval "${s/__ret__/-g linkHM}" # files linked from artifacts that we create (i.e. will create new links to)
+    #    declare -p linkHM
+    find-files $keepComps ; s=$(declare -p __ret__) ; eval "${s/__ret__/-g keepHM}" # files linked from artifacts that we keep
+    #    declare -p keepHM
+    find-files $pruneComps ; s=$(declare -p __ret__) ; eval "${s/__ret__/-g oldHM}" # files linked from artifacts that we can delete
+    #    declare -p oldHM
 
-function send-stream { set -eu # 1: name, 2: flags, 3: size
+    pruneHL=$( list-complement "$( printf '%s\n' "${!oldHM[@]}" )" "$( printf '%s\n' "${!keepHM[@]}" )"$'\n'"$( printf '%s\n' "${!linkHM[@]}" )" ) # files we no longer need
+    #    declare -p pruneHL
+    uploadHL=$( list-complement "$( printf '%s\n' "${!linkHM[@]}" )" "$( printf '%s\n' "${!keepHM[@]}" )"$'\n'"$( printf '%s\n' "${!oldHM[@]}" )" ) # files we need but don't have
+    #    declare -p uploadHL
+    declare -g -A uploadHM=( ) ; [[ ! $uploadHL ]] || eval 'declare -g -A uploadHM=( ['"${uploadHL//$'\n'/']="x" ['}"']="x" )' # (the above as map <hash,"x">)
+    #    declare -p uploadHM
+    declare -g -A restoreHM=( ) ; for hash in "${!linkHM[@]}" ; do [[ ${uploadHM[$hash]:-} ]] || restoreHM[$hash]=${linkHM[$hash]} ; done # files we need and have (just not in the .links dir)
+    #    declare -p restoreHM
+
+}
+
+# »/nix/store/.links/« is not always available, so get the files from the lookup maps:
+function get-file-path { # 1: hash
+    local hash=$1
+    if [[ ${linkHM[$hash]:-} ]] ; then printf /nix/store/%s "${linkHM[$hash]%%//*}" ; return 0 ; fi
+    if [[ ${keepHM[$hash]:-} ]] ; then printf /nix/store/%s "${keepHM[$hash]%%//*}" ; return 0 ; fi
+    if [[  ${oldHM[$hash]:-} ]] ; then printf /nix/store/%s  "${oldHM[$hash]%%//*}" ; return 0 ; fi
+    echo "Can't locate file $hash" ; exit 1
+}
+
+function show-stats { # 1: dest
+    dest=$1 ; if (( dest > 0 )) &>/dev/null ; then dest='/proc/self/fd/'$dest ; fi
+    local sendCount=${#uploadHM[@]}  ; local sendSize=0 ; for hash in "${!uploadHM[@]}"  ; do let sendSize+=$( stat --printf="%s" $(get-file-path "$hash") || echo 0 ) || true ; done
+    local linkCount=${#restoreHM[@]} ; local linkSize=0 ; for hash in "${!restoreHM[@]}" ; do let linkSize+=$( stat --printf="%s" $(get-file-path "$hash") || echo 0 ) || true ; done
+    (
+        echo "Sending ${#afterTop[@]} root path${afterTop[1]:+s} referencing $( <<<"$afterComps" wc -l ) store paths"
+        echo "onto    ${#beforeTop[@]} root path${beforeTop[1]:+s} referencing $( <<<"$beforeComps" wc -l ) store paths,"
+        echo "therefore uploading  ${sendCount} files with an overall size of ${sendSize} bytes,"
+        echo "and reusing existing ${linkCount} files with an overall size of ${linkSize} bytes."
+    ) 1>$dest
+}
+
+function send-stream { # 1: name, 2: flags, 3: size
     local name=( $1 ) ; local flags=( $2 ) ; local size=$(( $3 - 0 )) ; (( size > 0 )) || size=0
     #printf "%s %s %s\n" ${name:-.} ${flags:--} $size
     printf "%s %s %s\n" ${name:-.} ${flags:--} $size 1>&3 # (the values of name and flags might be crap, but this always sends three fields)
     cat - /dev/zero | head -c $size 1>&3 ; printf '\n' 1>&3
 }
-function send-file { set -eu # 1: name, 2: path
-    local flags= ; if [[ -L "$2" ]] ; then flags+=l ; elif [[ $(stat --format=%A "$2") == *x* ]] ; then flags+=x ; fi
+function send-file { # 1: name, 2: path
+    local flags= ; if [[ -L "$2" ]] ; then flags+=l ; elif [[ $( stat --format=%A "$2" ) == *x* ]] ; then flags+=x ; fi
     if [[ $flags == l ]] ; then readlink -n -- "$2" ; else cat -- "$2" ; fi | send-stream "$1" "$flags" "$( stat --printf="%s" "$2" || : )"
 }
 
-( dir=$(mktemp -d) ; trap "rm -rf $dir" EXIT ; cd $dir ; (
+function do-send { ( dir=$(mktemp -d) ; trap "rm -rf $dir" EXIT ; cd $dir ; (
 
-    toplevel="${wantedTop[@]}" ; <<< "$toplevel" send-stream .toplevel-paths - ${#toplevel}
+    toplevel="${afterTop[@]}" ; <<< "$toplevel" send-stream .toplevel-paths - ${#toplevel}
+
     lines=( ) ; size=0 ; for hash in "${!restoreHM[@]}" ; do line=${hash}=${restoreHM[$hash]%%//*} ; lines+=($line) ; let size+=${#line}+1 ; done
     printf "%s\0" "${lines[@]}" | send-stream .restore-links - $size
+
     cerate-paths-script >./.cerate-paths ; send-file .cerate-paths ./.cerate-paths
-    <<< "$pruneArts" send-stream .delete-paths - ${#pruneArts}
-    <<< "$pruneHL"   send-stream .prune-links  - ${#pruneHL}
 
-) )
+    <<< "$pruneComps" send-stream .delete-paths - ${#pruneComps}
+    <<< "$pruneHL"    send-stream .prune-links  - ${#pruneHL}
 
-while IFS= read -r hash; do
-    send-file "$hash" /nix/store/.links/"$hash" # (this is actually the only place where the ».links« dir is used)
-done <<< "$uploadHL"
+    : | send-stream .meta-end - 0
+
+    if [[ ${args[no-names]:-} ]] ; then
+        while IFS= read -r hash ; do
+            send-file . $(get-file-path "$hash")
+        done <<< "$uploadHL"
+    else
+        while IFS= read -r hash ; do
+            send-file "$hash" $(get-file-path "$hash")
+        done <<< "$uploadHL"
+    fi
+
+    : | send-stream .data-end - 0
+
+) ) }
+
+@genericArgParse@
+
+prepare-sending "$@"
+[[ ! ${args[stats]:-} ]] || show-stats "${args[stats]}"
+[[ ${args[dry-run]:-} ]] || do-send
 
 } 1>&2 ; } 3>&1 # stdout => stderr ; fd3 => stdout

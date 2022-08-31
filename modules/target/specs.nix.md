@@ -30,12 +30,12 @@ in {
             # Enable receiving of updates:
             environment.systemPackages = [ pkgs.nix-store-recv ];
 
-            #environment.etc.dummy.text = "mega significant change in configuration\n";
-            environment.etc.dummy.text = "super significant change in configuration\n";
+            environment.etc.dummy.text = "mega significant change in configuration\n";
+            #environment.etc.dummy.text = "super significant change in configuration\n";
 
             # Test the updating:
             # * switch the dummy files or make some other detectable change
-            # * run in the repo: nix run .#nix-store-send -- $(nix build .#nixosConfigurations.imx.config.system.build.toplevel --print-out-paths) $(ssh imx -- cat /boot/config) | ssh imx -- nix-store-recv --no-delete --status --verbose
+            # * run in the repo: nix run .#nix-store-send -- $(ssh imx -- cat /boot/toplevel) $(nix build .#nixosConfigurations.imx.config.system.build.toplevel --print-out-paths) --stats | ssh imx -- nix-store-recv --no-delete --status --verbose
             # * run in the repo: ssh imx -- nix-store-recv --only-delete --status --verbose
 
         };
@@ -51,10 +51,13 @@ in {
 
 
     }) (lib.mkIf (config.specialisation == { }) {
-        # Default configuration within specialisations:
+        # Config within a specialisation only:
 
         system.nixos.tags = [ cfg.name ];
         boot.loader.enable = true; # generate kernel and initramfs, the bootloader won't be evaluated
+
+    }) (lib.mkIf (config.specialisation != { }) {
+        # Config outside the specialisations only:
 
     }) ]);
 

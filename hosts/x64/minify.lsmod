@@ -1,4 +1,3 @@
-Module                  Size  Used by
 aesni_intel           380928  0
 agpgart                49152  4 intel_agp,intel_gtt,ttm,drm
 ata_generic            16384  0
