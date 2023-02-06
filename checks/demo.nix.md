@@ -25,6 +25,7 @@ dirname: inputs: pkgs: let
         environment.etc.version.text = "new";
     };
     old = override (resize "512M" (unpinInputs inputs.self.nixosConfigurations."old:x64-minimal")) {
+        wip.services.dropbear.rootKeys = lib.readFile "${inputs.self}/utils/res/ssh_testkey_1.pub";
         environment.etc.version.text = "old";
     };
 
@@ -37,39 +38,35 @@ dirname: inputs: pkgs: let
     # * cleanup:        Remove instructions and temporary hardlinks
     update-cmds = [
         { pre = ''
-            $ssh -- '${disk-usage}'
+            echo -n continue? ; read
             ( set -x ; cat ${dropRefs (nix-store-send old new "")}/stream ) | $ssh -- '${time "nix-store-recv --only-read-input --status"}'
 
         ''; test = ''
             echo "total traffic:" $( ${pkgs.inetutils}/bin/ifconfig --interface=ens3 | ${pkgs.gnugrep}/bin/grep -Pe 'RX bytes:' )
 
             echo "This is version $(cat /etc/version)" ; if [[ $(cat /etc/version) != old ]] ; then echo "dang ..." ; false ; fi
-            ${disk-usage}
 
+            echo -n continue? ; read
             ${time "nix-store-recv --only-restore-links"}
+            echo -n continue? ; read
             ${time "nix-store-recv --only-install"}
+            echo -n continue? ; read
             ${time "nix-store-recv --only-save-links"}
 
-            ( set -x ; ${dropRefs (toplevel new)}/install-bootloader 1 )
+            echo -n continue? ; read
+            ${time "${dropRefs (toplevel new)}/install-bootloader 1"}
+
+            echo -n continue? ; read
         ''; }
         { test = ''
             echo "This is version $(cat /etc/version)" ; if [[ $(cat /etc/version) != new ]] ; then echo "dang ..." ; false ; fi
-            ${disk-usage}
 
+            echo -n continue? ; read
             ${time "nix-store-recv --only-delete"}
             ${time "nix-store-recv --only-prune-links"}
             ${time "nix-store-recv --only-cleanup"}
 
-            ${disk-usage}
-        ''; }
-        { pre = ''
-            $ssh -- '${disk-usage}'
-            ( set -x ; cat ${dropRefs (nix-store-send old new "")}/stream ) | $ssh -- '${time "nix-store-recv --status"}'
-            $ssh -- '${disk-usage}'
-
-        ''; test = ''
-            echo "total traffic:" $( ${pkgs.inetutils}/bin/ifconfig --interface=ens3 | ${pkgs.gnugrep}/bin/grep -Pe 'RX bytes:' )
-            echo "This is version $(cat /etc/version)" ; if [[ $(cat /etc/version) != new ]] ; then echo "dang ..." ; false ; fi
+            echo -n continue? ; read
         ''; }
     ];
 
@@ -81,9 +78,6 @@ cat ${nix-store-send old new ""}/stats
 echo "stream size: $(du --apparent-size --block-size=1 ${nix-store-send old new ""}/stream | cut -f1)"
 echo "stream path: ${nix-store-send old new ""}"
 echo
+echo -n continue? ; read
 ${run-in-vm old { } update-cmds}
-echo
-${run-in-vm old { override = {
-    wip.fs.disks.postInstallCommands = ''true || rm -rf $mnt/system/nix/store/.links'';
-}; } update-cmds}
 ''

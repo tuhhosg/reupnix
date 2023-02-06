@@ -36,9 +36,9 @@ Naming convention:
     * `oldHM = findFiles(pruneComps)` # files linked from components that we can delete
     * `pruneHL = !oldHM \ !keepHM \ !linkHM` # files we no longer need
     * `uploadHL = !linkHM \ !keepHM \ !oldHM` # files we need but don't have
-    * `restoreHM = linkHM \ uploadHL` # files we need and have (just not in the .links dir)
+    * `restoreHL = !linkHM \ uploadHL` # files we need and have (just not in the .links dir)
 * sending: `tar` to stdout:
-    * `.restore-links` (optional): `restoreHM<hash, files[]>` mapped to `${hash}=${files[0]}\0` (i.e., for each file we'll need to hardlink, one of the paths where it exists)
+    * `.restore-links` (optional): `${hash}=$(file $hash)\0` for each `hash` in `restoreHL`, where `file` is a function returning an entry from `restoreHL` or `restoreHL` (i.e., for each file we'll need to hardlink, one of the paths where it exists)
     * `.cerate-paths`: serialize `linkHM` as per below instructions
     * `.delete-paths`: serialize `pruneComps` as `\n` separated list of `$(basename $path)`
     * `.prune-links` (optional): serialize `pruneHL` as `\n` separated list
@@ -140,7 +140,7 @@ in {
     };
 
     nar-hash = pkgs.runCommandLocal "nar-hash" {
-        src = ./nar-hash.cc; nativeBuildInputs = [ pkgs.gcc pkgs.openssl ];
+        src = ./nar-hash.cc; nativeBuildInputs = [ pkgs.buildPackages.gcc pkgs.buildPackages.openssl ];
     } ''
         mkdir -p $out/bin/
         g++ -std=c++17 -lcrypto -lssl -O3 $src -o $out/bin/nar-hash

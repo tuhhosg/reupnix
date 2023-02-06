@@ -155,17 +155,17 @@ in {
 
     # Add the additional partition table+header per boot slot.
     options.wip.fs.disks.partitioning = lib.mkOption { apply = parts: let
-        esc = lib.escapeShellArg;
+        esc = lib.escapeShellArg; native = pkgs.buildPackages;
         mbrOnly = cmds: if cfg.loader == "uboot-extlinux" then cmds else "";
     in pkgs.runCommand "partitioning-${config.networking.hostName}-slotted" { } ''
         set -x
         cp -aT ${parts}/ $out/ ; chmod -R +w $out
         devSize=${toString (lib.wip.parseSizeSuffix config.wip.fs.disks.devices.${cfg.slots.disk}.size)}
         name=${esc cfg.slots.disk} ; img=$name.img
-        ${pkgs.coreutils}/bin/truncate -s $devSize "$img"
+        ${native.coreutils}/bin/truncate -s $devSize "$img"
 
         for slot in {1..${toString cfg.slots.number}} ; do
-            ${pkgs.gptfdisk}/bin/sgdisk --load-backup=$out/"$name".backup "$img" # start with the default GPT partitioning
+            ${native.gptfdisk}/bin/sgdisk --load-backup=$out/"$name".backup "$img" # start with the default GPT partitioning
             sgdisk=( -t $slot:ef00 ) ; for (( i = 1 ; i <= ${toString cfg.slots.number} ; i++ )) ; do # set GPT types
                 (( i == slot )) || sgdisk+=( -t $i:8301 )
             done
@@ -173,7 +173,7 @@ in {
             ${mbrOnly ''sgdisk+=( --hybrid 1 "$img" ) # --hybrid: create MBR in addition to GPT, with GPT part 1 (formerly $slot) as MBR part 2''}
             sgdisk+=( --move-main-table=$((                 2 +      slot * 32 + ${toString cfg.extraGptOffset} )) ) # move tables so they don't conflict
             sgdisk+=( --move-backup-table=$(( devSize/512 - 1 - 32 - slot * 32 - ${toString cfg.extraGptOffset} )) )
-            ${pkgs.gptfdisk}/bin/sgdisk "''${sgdisk[@]}" "$img" # apply GPT changes
+            ${native.gptfdisk}/bin/sgdisk "''${sgdisk[@]}" "$img" # apply GPT changes
 
             ${mbrOnly ''printf "
                 M                                # edit hybrid MBR
@@ -195,11 +195,11 @@ in {
                 a;1                              # active/boot ; part1
 
                 p;w;q                            # print ; write ; quit
-            " | sed -E 's/^ *| *(#.*)?$//g' | sed -E 's/\n\n+| *; */\n/g' | tee >((echo -n '++ ' ; tr $'\n' '|' ; echo) 1>&2) | ${pkgs.util-linux}/bin/fdisk "$img"''}
+            " | sed -E 's/^ *| *(#.*)?$//g' | sed -E 's/\n\n+| *; */\n/g' | tee >((echo -n '++ ' ; tr $'\n' '|' ; echo) 1>&2) | ${native.util-linux}/bin/fdisk "$img"''}
 
-            ${pkgs.gptfdisk}/bin/sgdisk --backup=$out/"$name".slot-$slot.backup "$img"
-            ${pkgs.gptfdisk}/bin/sgdisk --print "$img" >$out/"$name".slot-$slot.gpt
-            ${mbrOnly ''${pkgs.util-linux}/bin/fdisk --type mbr --list "$img" >$out/"$name".slot-$slot.mbr''}
+            ${native.gptfdisk}/bin/sgdisk --backup=$out/"$name".slot-$slot.backup "$img"
+            ${native.gptfdisk}/bin/sgdisk --print "$img" >$out/"$name".slot-$slot.gpt
+            ${mbrOnly ''${native.util-linux}/bin/fdisk --type mbr --list "$img" >$out/"$name".slot-$slot.mbr''}
 
             # TODO: could create an additional output that only contains the sectors that the bootloader switching actually needs
         done

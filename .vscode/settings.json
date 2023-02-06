@@ -5,6 +5,7 @@
 	"cSpell.words": [ // this got a bit out of hand ...
 		"aarch64", // processor architecture
 		"addplot", // latex
+		"addrinuse", // abbr (address in use)
 		"adfs", // kmod / file system
 		"affs", // kmod / file system
 		"agetty", // program
@@ -43,6 +44,7 @@
 		"builtins", // nix
 		"casync", // program
 		"cflags", // cli arg
+		"charmaps", // abbr (character maps)
 		"chattr", // program / function
 		"checksumming", // word
 		"cmdline", // abbr (command line)
@@ -150,6 +152,7 @@
 		"ignorespace", // cli arg
 		"imap", // nix function (int-map)
 		"importd", // daemon
+		"inet", // abbr (internet)
 		"inetd", // program
 		"inetutils", // package
 		"initialRamdiskSecretAppender", // nixos option
@@ -181,19 +184,23 @@
 		"libsystemd", // concat
 		"libubootenv", // package
 		"libusb", // cli arg
+		"libuv", // package
 		"libx265", // cli arg
 		"likeauth", // cli arg
 		"localed", // daemon
+		"localedata", // concat
 		"localmodconfig", // cli arg (kernel)
 		"logind", // systemd
 		"losetup", // program / function
 		"lowerdir", // mount overlay option
+		"lowlevel", // concat
 		"lssl", // lib??
 		"luks", // linux
 		"lusb", // cli arg
 		"machinectl", // program
 		"macvlans", // linux
 		"mbuffer", // program
+		"mdbook", // package
 		"mdmon", // program
 		"mdns", // abbr
 		"mgmt", // abbr (management)
@@ -206,6 +213,7 @@
 		"mkpasswd", // program / function
 		"mktemp", // program / function
 		"mmcblk", // diks type
+		"mmio", // abbr (memory mapped IO)
 		"modifyvm", // virtual box
 		"mountpoint", // program / function
 		"mpris", // abbr
@@ -259,6 +267,7 @@
 		"partitionings", // plural
 		"partlabel", // linux
 		"partprobe", // program / function
+		"passthru", // nix
 		"pbkdf", // cli arg
 		"pciutils", // package
 		"PCRE", // abbr (perl compatible regular expressions)
@@ -268,6 +277,7 @@
 		"podman", // program
 		"polkit", // program
 		"portcount", // virtual box
+		"posix", // word
 		"postgres", // program
 		"poweroff", // program / function
 		"prefetch", // word
@@ -390,6 +400,7 @@
 		"veth", "veths", // linux
 		"vfat", // linux
 		"vhost", "vhosts", // abbr (virtual host)
+		"virtio", // abbr (virtual IO)
 		"virtualbox", // program
 		"virtualisation", // nixos option
 		"vmdk", // file type (virtual disk format)
@@ -412,8 +423,13 @@
 		"xorgserver", // package
 		"xset", // prog / function
 		"xzcat", // program / function
+		"yescrypt", // package
 		"zbar", // program
 		"zoneinfo", // file name
 		"zstdcat", // program / function
-	],
+    ],
+    "markdown.validate.ignoredLinks": [ // these _are_ valid ...
+        "./hosts/",
+        "./modules/"
+    ],
 }

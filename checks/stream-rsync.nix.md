@@ -31,10 +31,11 @@ dirname: inputs: pkgs: let
     };
 
     old = remove-containers (unpinInputs inputs.self.nixosConfigurations."old:x64-minimal");
-    new = remove-containers (unpinInputs inputs.self.nixosConfigurations.    "x64-minimal");
-    clb = override new { nixpkgs.overlays = [ (final: prev: {
+    new = remove-containers (unpinInputs inputs.self.nixosConfigurations."new:x64-minimal");
+    clb = override new ({ config, ... }: { nixpkgs.overlays = lib.mkIf (!config.system.build?isVmExec) [ (final: prev: {
         glibc = prev.glibc.overrideAttrs (old: { trivialChange = 42 ; });
-    }) ]; };
+        libuv = prev.libuv.overrideAttrs (old: { doCheck = false; });
+    }) ]; system.nixos.tags = [ "glibc" ]; });
 
 in ''
 # Using »--dry-run« invalidates the measurement, so the old file needs to be copied.
@@ -46,7 +47,7 @@ echo -n "\addplot coordinates {" > plotDw
 
 for size in 8 16 32 64 128 256 512 1k 2k 4k 8k 16k 32k 64k 128k ; do
     echo $'\n'"Differential rsync transfer of update stream onto initial image (with names, block size $size)" 1>&2
-    cp ${nix-store-send null old ""}/stream ./prev
+    rm -rf ./prev ; cp ${nix-store-send null old ""}/stream ./prev
     data=$( ${pkgs.rsync}/bin/rsync --no-whole-file --stats --block-size=$size ${nix-store-send old new ""}/stream ./prev )
     <<<"$data" grep -Pe 'Total|data' 1>&2
 
@@ -62,7 +63,7 @@ echo " }; % real down" >>plotDw
 if [[ ,''${args[plot]:-}, == *,1,* ]] ; then cat plot* ; fi
 
 echo $'\n'"Differential rsync transfer of update stream onto initial image (without names, block size 512)" 1>&2
-cp ${nix-store-send null old "--no-names"}/stream ./prev
+rm -rf ./prev ; cp ${nix-store-send null old "--no-names"}/stream ./prev
 ${pkgs.rsync}/bin/rsync --no-whole-file --stats --block-size=700 ${nix-store-send old new "--no-names"}/stream ./prev | grep -Pe 'Total|data' 1>&2
 
 ( echo ; echo ) 1>&2
@@ -73,7 +74,7 @@ echo -n "\addplot coordinates {" > plotDw
 
 for size in 8 16 32 64 128 256 512 1k 2k 4k 8k 16k 32k 64k 128k ; do
     echo $'\n'"Differential rsync transfer of update stream onto initial image (with names, block size $size)" 1>&2
-    cp ${nix-store-send null new ""}/stream ./prev
+    rm -rf ./prev ; cp ${nix-store-send null new ""}/stream ./prev
     data=$( ${pkgs.rsync}/bin/rsync --no-whole-file --stats --block-size=$size ${nix-store-send new clb ""}/stream ./prev )
     <<<"$data" grep -Pe 'Total|data' 1>&2
 
@@ -89,6 +90,6 @@ echo " }; % glibc down" >>plotDw
 if [[ ,''${args[plot]:-}, == *,2,* ]] ; then cat plot* ; fi
 
 echo $'\n'"Differential rsync transfer of update stream onto initial image (without names, block size 512)" 1>&2
-cp ${nix-store-send null new "--no-names"}/stream ./prev
+rm -rf ./prev ; cp ${nix-store-send null new "--no-names"}/stream ./prev
 ${pkgs.rsync}/bin/rsync --no-whole-file --stats --block-size=700 ${nix-store-send new clb "--no-names"}/stream ./prev | grep -Pe 'Total|data' 1>&2
 ''

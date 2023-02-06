@@ -76,9 +76,9 @@ in {
                 # Setting »nixpkgs.pkgs = pkgs« would mean that all overlays that happen to be applied to the host »pkgs« (either directly at instantiation or via »config.nixpkgs.overlays«) are applied to the »pkgs« argument passed to all container modules.
                 # But just because the host has an overlay applied does not mean that the container should also have it -- if it does, it should be applied again by including and enabling the respective module.
                 # Also, applying overlays twice (when importing the same module again) is often, but not necessarily a no-op.
-                nixpkgs.overlays = (builtins.concatLists (map (input: if input?overlay then [ input.overlay ] else if input?overlays then builtins.attrValues input.overlays else [ ]) (builtins.attrValues (builtins.removeAttrs inputs [ "parent" ]))));
-                # We start with a new set of modules with only this one, its imports, and the default ones from »nixpkgs« here, so import the modules from any other inputs again.
-                imports = (map (input: input.nixosModule or (if input?nixosModules then { imports = builtins.attrValues input.nixosModules; } else { })) (builtins.attrValues (builtins.removeAttrs inputs [ "parent" "nixpkgs" ])));
+                nixpkgs.overlays = lib.wip.getOverlaysFromInputs inputs;
+                # We start with a new set of modules with only this one, its imports, and the default ones from »nixpkgs«, so import the modules from any other inputs again.
+                imports = lib.wip.getModulesFromInputs inputs;
             }) ({
                 # Some base configuration:
 
@@ -161,7 +161,7 @@ in {
                     exec machinectl -q shell "$1" /bin/sh -c "$SSH_ORIGINAL_COMMAND"
                 fi
             '';
-        in lib.concatLists (lib.mapAttrsToList (host: { sshKeys, ... }: lib.concatLists (lib.mapAttrsToList (user: keys: map (key: ''
+        in lib.concatStrings (lib.mapAttrsToList (host: { sshKeys, ... }: lib.concatStrings (lib.mapAttrsToList (user: keys: lib.concatMapStrings (key: ''
             command="${ssh-to-container} ${user}@${host}" ${key}
         '') keys) sshKeys)) cfg.containers);
 

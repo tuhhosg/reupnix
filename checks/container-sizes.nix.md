@@ -19,10 +19,10 @@ dirname: inputs: pkgs: let
     inherit (lib.th.testing pkgs) toplevel override unpinInputs resize frame collect-deps du-deps run-in-vm;
 
     base-minimal  = override (unpinInputs inputs.self.nixosConfigurations.x64-minimal) {
-        services.httpd.adminAddr = "admin@example.org"; # TODO: could remove this now
+        nixpkgs.overlays = [ (final: prev: { redis = prev.redis.overrideAttrs (old: { doCheck = false; }); }) ];
     };
     base-baseline = override (unpinInputs inputs.self.nixosConfigurations.x64-baseline) {
-        services.httpd.adminAddr = "admin@example.org"; # TODO: could remove this now
+        nixpkgs.overlays = [ (final: prev: { redis = prev.redis.overrideAttrs (old: { doCheck = false; }); }) ];
     };
     declareUid = userName: uid: { users.users.${userName} = { isSystemUser = true; uid = uid; group = lib.mkDefault userName; }; users.groups.${userName}.gid = uid; };
 
@@ -222,7 +222,7 @@ ${lib.concatMapStringsSep "\n" (series: ''
         #( set -x ; cat layers )
         #( set -x ; <layers LC_ALL=C sort -k2 | uniq -f1  )
         #( set -x ; cat uniq )
-        ( set -x ; cat totals )
+        #( set -x ; cat totals )
 
         echo "layers total:  $( <totals sum-size )"
         echo "layers merged: $( <uniq sum-size )"

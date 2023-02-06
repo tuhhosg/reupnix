@@ -10,7 +10,7 @@ dirname: inputs: pkgs: let
     inherit (inputs.self) lib;
     inherit (lib.th.testing pkgs) toplevel override unpinInputs measure-installation nix-store-send run-in-vm;
 
-    new = unpinInputs inputs.self.nixosConfigurations.    "x64-minimal";
+    new = unpinInputs inputs.self.nixosConfigurations."new:x64-minimal";
     old = unpinInputs inputs.self.nixosConfigurations."old:x64-minimal";
 
     frame = script: ''

@@ -15,7 +15,7 @@ in { imports = [ ({ ## Hardware
     th.hermetic-bootloader.uboot.extraConfig = [ "CONFIG_IMX_WATCHDOG=y" ]; # required on i.MX devices (up to apparently including i.MX8) to enable the watchdog hardware
     nxp.imx8-boot.uboot.package = config.th.hermetic-bootloader.uboot.result;
     nxp.imx8-boot.enable = true; nxp.imx8-boot.soc = "iMX8MP";
-    nixpkgs.config.allowUnfreePredicate = pkg: builtins.elem (lib.getName pkg) [ "firmware-imx" /* "amdgpu-pro" */ ];
+    nixpkgs.config.allowUnfreePredicate = pkg: builtins.elem (lib.getName pkg) [ "firmware-imx" ];
     boot.loader.generic-extlinux-compatible.enable = lib.mkForce false;
     wip.fs.boot.enable = lib.mkForce false;
     # The i.MX expects the boot image starting at sector 64. The multiple copies of the GPT would usually conflict with that, so move them:
@@ -36,6 +36,8 @@ in { imports = [ ({ ## Hardware
     #boot.kernelPackages = lib.mkForce pkgs.linuxPackages; # building the i.MX kernel on x64 is quite time consuming
     disableModule."tasks/swraid.nix" = true; # The kernel is missing modules required by this.
 
+    system.build.vmExec = lib.mkForce null; # (NixOS thinks that) the »pkgs.linux-imx_v8« kernel is not compatible with the installer VM.
+
 
 }) (lib.mkIf true { ## Test Stuff
 
@@ -43,7 +45,7 @@ in { imports = [ ({ ## Hardware
 
     boot.kernelParams = [ "boot.shell_on_fail" ]; wip.base.panic_on_fail = false;
 
-    wip.services.dropbear.rootKeys = [ ''${lib.readFile "${inputs.self}/utils/res/niklas-gollenstede.pub"}'' ];
+    wip.services.dropbear.rootKeys = lib.readFile "${inputs.self}/utils/res/niklas-gollenstede.pub";
     wip.services.dropbear.hostKeys = [ ../../utils/res/dropbear_ecdsa_host_key ];
 
     boot.initrd.preLVMCommands = lib.mkIf false (let inherit (config.system.build) extraUtils; in ''

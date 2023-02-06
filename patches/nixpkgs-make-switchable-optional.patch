@@ -1,0 +1,77 @@
+diff --git a/nixos/modules/system/activation/top-level.nix b/nixos/modules/system/activation/top-level.nix
+index 00b11471e1c..463f57f3ce1 100644
+--- a/nixos/modules/system/activation/top-level.nix
++++ b/nixos/modules/system/activation/top-level.nix
+@@ -63,16 +63,18 @@ let
+       echo -n "$nixosLabel" > $out/nixos-version
+       echo -n "${config.boot.kernelPackages.stdenv.hostPlatform.system}" > $out/system
+ 
+-      mkdir $out/bin
+-      export localeArchive="${config.i18n.glibcLocales}/lib/locale/locale-archive"
+-      substituteAll ${./switch-to-configuration.pl} $out/bin/switch-to-configuration
+-      chmod +x $out/bin/switch-to-configuration
+-      ${optionalString (pkgs.stdenv.hostPlatform == pkgs.stdenv.buildPlatform) ''
+-        if ! output=$($perl/bin/perl -c $out/bin/switch-to-configuration 2>&1); then
+-          echo "switch-to-configuration syntax is not valid:"
+-          echo "$output"
+-          exit 1
+-        fi
++      ${optionalString config.system.build.makeSwitchable ''
++        mkdir $out/bin
++        export localeArchive="${config.i18n.glibcLocales}/lib/locale/locale-archive"
++        substituteAll ${./switch-to-configuration.pl} $out/bin/switch-to-configuration
++        chmod +x $out/bin/switch-to-configuration
++        ${optionalString (pkgs.stdenv.hostPlatform == pkgs.stdenv.buildPlatform) ''
++          if ! output=$($perl/bin/perl -c $out/bin/switch-to-configuration 2>&1); then
++            echo "switch-to-configuration syntax is not valid:"
++            echo "$output"
++            exit 1
++          fi
++        ''}
+       ''}
+ 
+       ${config.system.systemBuilderCommands}
+@@ -98,14 +100,14 @@ let
+     allowSubstitutes = false;
+     buildCommand = systemBuilder;
+ 
+-    inherit (pkgs) coreutils;
++    coreutils = lib.optionalString config.system.build.makeSwitchable pkgs.coreutils;
+     systemd = config.systemd.package;
+     shell = "${pkgs.bash}/bin/sh";
+-    su = "${pkgs.shadow.su}/bin/su";
+-    utillinux = pkgs.util-linux;
++    su = lib.optionalString config.system.build.makeSwitchable "${pkgs.shadow.su}/bin/su";
++    utillinux = lib.optionalString config.system.build.makeSwitchable pkgs.util-linux;
+ 
+     kernelParams = config.boot.kernelParams;
+-    installBootLoader = config.system.build.installBootLoader;
++    installBootLoader = lib.optionalString config.system.build.makeSwitchable config.system.build.installBootLoader;
+     activationScript = config.system.activationScripts.script;
+     dryActivationScript = config.system.dryActivationScript;
+     nixosLabel = config.system.nixos.label;
+@@ -113,7 +115,7 @@ let
+     inherit (config.system) extraDependencies;
+ 
+     # Needed by switch-to-configuration.
+-    perl = pkgs.perl.withPackages (p: with p; [ ConfigIniFiles FileSlurp ]);
++    perl = lib.optionalString config.system.build.makeSwitchable (pkgs.perl.withPackages (p: with p; [ ConfigIniFiles FileSlurp ]));
+   } // config.system.systemBuilderArgs);
+ 
+   # Handle assertions and warnings
+@@ -188,6 +190,15 @@ in
+         } (types.either types.str types.package);
+       };
+ 
++      makeSwitchable = mkOption {
++        default = !config.boot.isContainer;
++        defaultText = literalExpression "!config.boot.isContainer";
++        description = ''
++          Whether to create the <literal>switch-to-configuration</literal> script, allowing to switch to the system at runtime or activating it for booting from the bootloader.
++        '';
++        type = types.bool;
++      };
++
+       toplevel = mkOption {
+         type = types.package;
+         readOnly = true;

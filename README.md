@@ -27,7 +27,7 @@ The abstract:
 > With these and a few future improvements in place, NixOS is a suitable bases for safely updatable, multi-configuration IoT devices.
 
 The configuration model is implemented by the layout of the individual hosts, [`importMachineConfig`](./lib/misc.nix), and [`modules/target/specs.nix.md`](./modules/target/specs.nix.md). It is also sketched in the figure below.
-[`/home/user/dev/misc/reconix/overlays/nix-store-send.nix.md`](.//home/user/dev/misc/reconix/overlays/nix-store-send.nix.md) implements the transfer mechanism, [`modules/hermetic-bootloader.nix.md`](./modules/hermetic-bootloader.nix.md) implements the bootloader configuration, and [`modules/minify.nix.md`](./modules/minify.nix.md) realizes the reduction in installation size.
+[`./overlays/nix-store-send.nix.md`](./overlays/nix-store-send.nix.md) implements the transfer mechanism, [`modules/hermetic-bootloader.nix.md`](./modules/hermetic-bootloader.nix.md) implements the bootloader configuration, and [`modules/minify.nix.md`](./modules/minify.nix.md) realizes the reduction in installation size.
 
 ![](./docs/relations.drawio.svg)
 
@@ -56,8 +56,7 @@ See `apps` and `devShells` exported by the flake, plus the [installation](#insta
 
 ## Installation / Initial Setup
 
-The installation is completely scripted and should work on any Linux with root access, and nix installed for either root or the current user.
-See [`./utils/install.sh.md`](./utils/install.sh.md)) for more details.
+The installation is completely scripted and should work on any Linux with KVM enabled (or root access), and nix installed for the current user (or root).
 
 
 ## Concepts
@@ -88,5 +87,5 @@ lib = lib { inherit pkgs; inherit (pkgs) lib; }
 
 To show the effect of deduplication on a `/nix/store/`, run:
 ```bash
- is=0 ; would=0 ; while read perm links user group size rest ; do is=$(( is + size )) ; would=$(( would + (links - 1) * size )) ; done <<<"$(ls -Al /nix/store/.links | tail -n +2)" ; echo "Actual size: $is ; without dedup: $would ; gain: $(bc <<< "scale=2 ; $would/$is")"
+ is=0 ; would=0 ; while read perm links user group size rest ; do is=$(( is + size )) ; would=$(( would + (links - 1) * size )) ; done < <( \ls -Al /nix/store/.links | tail -n +2 ) ; echo "Actual size: $is ; without dedup: $would ; gain: $( bc <<< "scale=2 ; $would/$is" )"
 ```

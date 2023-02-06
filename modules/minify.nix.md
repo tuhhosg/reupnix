@@ -19,7 +19,7 @@ dirname: inputs: specialArgs@{ config, pkgs, lib, utils, ... }: let inherit (inp
     cfg = config.th.minify;
     specialArgs' = specialArgs // { inherit inputs; }; # Apparently this module gets called and evaluated twice. Once with all »specialArgs« passed into the build, and once only with those that this module lists as names arguments.
 
-    desiredSystemPackages = [ # (can check this against »lib.naturalSort (lib.unique (map (p: p.pname or p.name) nixosConfigurations.target.config.environment.systemPackages))«)
+    desiredSystemPackages = [ # (can check this against »lib.naturalSort (lib.unique (map (p: p.pname or p.name) nixosConfigurations.x64.config.environment.systemPackages))«)
         "bash-5.1-p16" # inevitable
         "coreutils" # really no fun without
         "dbus" # dow we need this?
@@ -48,19 +48,19 @@ in {
     }; };
 
     imports = (
-        map (lib.wip.makeNixpkgsModuleConfigOptional specialArgs') optionalModules
+        map (path: lib.wip.makeNixpkgsModuleConfigOptional path { }) optionalModules
     ) ++ [
         # (None of these should have any effect by default!)
-        (lib.wip.overrideNixpkgsModule specialArgs' "virtualisation/nixos-containers.nix" (module: {
+        (lib.wip.overrideNixpkgsModule "virtualisation/nixos-containers.nix" { } (module: {
             options.boot.interactiveContainers = (lib.mkEnableOption "interactive nixos-containers") // { default = true; };
             config.content.environment.systemPackages = lib.mkIf config.boot.interactiveContainers module.config.content.environment.systemPackages;
         }))
-        (lib.wip.overrideNixpkgsModule specialArgs' "tasks/filesystems.nix" (module: {
+        (lib.wip.overrideNixpkgsModule "tasks/filesystems.nix" { } (module: {
             options.includeFSpackages = (lib.mkEnableOption "inclusion of filesystem maintenance tools") // { default = true; };
             config.environment.systemPackages = lib.mkIf config.includeFSpackages module.config.environment.systemPackages; # adds fuse
             config.system.fsPackages = lib.mkIf config.includeFSpackages module.config.system.fsPackages; # adds dosfstools
         }))
-        (lib.wip.overrideNixpkgsModule specialArgs' "tasks/network-interfaces.nix" (module: {
+        (lib.wip.overrideNixpkgsModule "tasks/network-interfaces.nix" { } (module: {
             options.includeNetTools = (lib.mkEnableOption "inclusion of basic networking utilities") // { default = true; };
             config.environment.systemPackages = lib.mkIf config.includeNetTools module.config.environment.systemPackages; # adds [ host iproute2 iputils nettools ]
             config.systemd.services.network-local-commands = lib.mkIf config.includeNetTools module.config.systemd.services.network-local-commands; # implements »config.networking.localCommands« using with iproute2
@@ -90,7 +90,8 @@ in {
             # Only if there is a build dependency on and runtime reference to something (and the latter can normally only exist if the former does) nix will make the thing a runtime dependency.
             # These two lines avoid that by removing the reference and adds it to /etc, which is less likely to have a build dependency on the init script.
             # TODO: look into »disallowedRequisites« for this
-            system.extraSystemBuilderCmds = if !config.boot.initrd.enable then "" else lib.mkAfter ''rm -f $out/boot-stage-1.sh'';
+            system.extraSystemBuilderCmds = ''rm -f $out/boot-stage-1.sh'';
+            #system.build.initialRamdiskSecretAppender = lib.mkForce "";
             environment.etc."boot-stage-1.sh" = lib.mkIf config.boot.initrd.enable { source = builtins.unsafeDiscardStringContext config.system.build.bootStage1; };
 
             # TODO: put these somewhere:
@@ -110,7 +111,8 @@ in {
                 ''d  /nix/var/nix/db            0755 root root - -''
                 ''d  /nix/var/nix/daemon-socket 0755 root root - -''
             ];
-            wip.base.includeInputs = false;
+            wip.base.includeInputs = lib.mkForce { };
+            system.activationScripts.diff-systems = lib.mkForce "";
         });
 
         disableLiveSwitching = ({
@@ -132,7 +134,6 @@ in {
 
         removeTzdata = ({
             description = ''Remove »tzdata«'';
-            disableModule."config/locale.nix" = true;
             systemd.managerEnvironment.TZDIR = lib.mkForce "";
         });
 
@@ -190,12 +191,34 @@ in {
         disableLocalization = ({
             description = ''Disable localization'';
 
+            disableModule."config/locale.nix" = true;
             # the default »pkgs.glibc-locales« has ~215MB
             #i18n.supportedLocales = [ "C.UTF-8/UTF-8" ]; i18n.defaultLocale = "C.UTF-8/UTF-8";
             i18n.supportedLocales = [ ]; i18n.defaultLocale = "C";
             # ... there is quite a bit more to be done here, often within packages ...
-            nixpkgs.overlays = [ (final: prev: {
+            nixpkgs.overlays = lib.mkIf (!config.system.build?isVmExec) [ (final: prev: {
                 util-linux = prev.util-linux.override { nlsSupport = false; };
+
+                # (This causes everything to be built from sources. Could use »config.system.replaceRuntimeDependencies« to use a normal build, then copy the outputs with the glibc runtime dependency replaced. That, though, might behave strangely if any other overlay affects glibc.)
+                glibc = prev.glibc.overrideAttrs (prev: {
+                    #postInstall = let
+                    #    all = (lib.wip.extractLineAnchored ''make -j[$][{]NIX_BUILD_CORES:-1[}] localedata/install-locales'' true true prev.postInstall);
+                    #    minimal = ''
+                    #        # don't create $out/lib/locale/locale-archive
+                    #    '';
+                    #in lib.concatStrings [ all.before minimal all.after ];
+                    postInstall = prev.postInstall + ''
+                        # keep files for »C.UTF-8/UTF-8« (which should be the only local built in »$out/lib/locale/locale-archive«):
+                        ( cd $out/share/i18n/locales  ; find . ! -name POSIX    -type f -exec rm -rf {} + )
+                        ( cd $out/share/i18n/charmaps ; find . ! -name UTF-8.gz -type f -exec rm -rf {} + )
+                        rm -rf $out/share/locale
+                        # keep only the string conversion modules referenced from »gconv-modules« (not those from »gconv-modules-extra.conf« or any other):
+                        ( cd $out/lib/gconv ; find . ${lib.concatMapStringsSep " " (name: "! -name ${name}") [ "gconv-modules" "ANSI_X3.110.so" "CP1252.so" "ISO8859-1.so" "ISO8859-15.so" "UNICODE.so" "UTF-32.so" "UTF-16.so" "UTF-7.so" ]} -type f -exec rm -rf {} + )
+                    '';
+                });
+                dosfstools = prev.dosfstools.overrideAttrs (prev: {
+                    checkInputs = [ ]; doCheck = true; # depends on vim (xxd), which is broken without the locale stuff
+                });
             }) ];
         });
 
@@ -204,14 +227,15 @@ in {
                 Downgrade »bashInteractive« to simple »bash«:
                 Use »bash« (needed anyway) instead of »bash-interactive«, which drops some dependencies (e.g. »ncurses«). Also, get rid of »ncurses« in general.
             '';
-            nixpkgs.overlays = [ (final: prev: {
+            nixpkgs.overlays = lib.mkIf (!config.system.build?isVmExec) [ (final: prev: {
                 bashInteractive = final.bash; # (this does cause many packages (systemd, nix, git, cargo, ...) to rebuild, which may be counter-productive in the longer run ...)
-                git = prev.git.overrideAttrs (old: { doInstallCheck = false ; }); # takes forever and then fails (it's going to be fine ^^)
+                git = prev.git.overrideAttrs (prev: { doInstallCheck = false ; }); # takes forever and then fails (it's going to be fine ^^)
                 util-linux = prev.util-linux.override { ncursesSupport = false; ncurses = null; };
             }) ];
             programs.bash.enableCompletion = false;
             programs.less.enable = lib.mkForce false; environment.variables.PAGER = lib.mkForce "cat"; # default depends on less and ncurses
             programs.command-not-found.enable = false; # depends on perl (and more)
+            wip.base.bashInit = false;
             programs.bash.promptInit = ''
                 # Provide a less nice prompt that the dumb shell can deal with:
                 if [ "''${TERM:-}" != "dumb" ] ; then
@@ -263,8 +287,8 @@ in {
                 Hashed passwords will be world-readable (and may therefore only be set via ».hashedPassword«), and all added users and groups will need fixed IDs.
             '';
         } // (let
-            getGid = g: toString (lib.wip.ifNull g.gid (throw "Group ${g.name} has no GID"));
-            getUid = u: toString (lib.wip.ifNull u.uid (throw "User ${u.name} has no UID"));
+            getUid = u: toString (lib.wip.ifNull u.uid (config.ids.uids.${u.name} or (throw  "User ${u.name} has no UID")));
+            getGid = g: toString (lib.wip.ifNull g.gid (config.ids.gids.${g.name} or (throw "Group ${g.name} has no GID")));
         in {
             system.activationScripts.users = lib.mkForce "";
             users.mutableUsers = false; assertions = [ { assertion = config.users.mutableUsers == false; message = "Static user generation is incompatible with »users.mutableUsers = true«."; } ];
@@ -274,7 +298,7 @@ in {
                 "${g.name}:x:${getGid g}:${lib.concatStringsSep "," g.members}"
             )) (lib.attrValues config.users.groups)}\n";
             environment.etc.passwd.text = "${lib.concatMapStringsSep "\n" (u: (
-                "${u.name}:x:${getUid u}:${if lib.wip.matches ''[0-9]+$'' u.group then u.group else if config.users.groups?${u.group} then getGid config.users.groups.${u.group} else throw "User ${u.name}'s group ${u.group} does not exist"}:${u.description}:${u.home}:${utils.toShellPath u.shell}"
+                "${u.name}:x:${getUid u}:${if lib.wip.matches ''^[0-9]+$'' u.group then u.group else if config.users.groups?${u.group or u.name} then getGid config.users.groups.${u.group} else throw "User ${u.name}'s group ${u.group} does not exist"}:${u.description}:${u.home}:${utils.toShellPath u.shell}"
             )) (lib.attrValues config.users.users)}\n";
             environment.etc.shadow = { text = "${lib.concatMapStringsSep "\n" (u: (
                 if u.password != null || u.passwordFile != null then throw "With static user generation, user passwords may only be set as ».hashedPassword« (check user ${u.name})" else
@@ -284,21 +308,20 @@ in {
             # Ensure all users/groups have static IDs. Use »config.ids« as intermediary to make undetected conflicts less likely. (Should scan for duplicates.)
             ids = { uids = {
                 dhcpcd = 133; # (reserved but not actually set)
+                systemd-oom = 690; # (just whatever number in [400-999])
             }; gids = {
                 systemd-coredump = config.ids.uids.systemd-coredump;
                 #shadow = 318; # (reserved but not actually set)
                 dhcpcd = 133; # (reserved but not actually set)
+                systemd-oom = 690; # (just whatever number in [400-999])
             }; };
-            users.groups.systemd-coredump.gid = config.ids.gids.systemd-coredump;
-            users.users.dhcpcd = { uid = config.ids.uids.dhcpcd; group = "dhcpcd"; };
-            users.groups.dhcpcd.gid = config.ids.gids.dhcpcd;
         }));
 
         ditchKernelCopy = ({
             description = ''
                 Allow installation without redundant kernel and initramfs copy in the nix store (assuming it is already on a separate »/boot« partition).
                 Using »th.minify.topLevel« as copy and install target instead of »config.system.build.toplevel« drops the store dependencies on the kernel and initrd.
-                The symbolic linking is necessary for the bootloader-installer to pick up the files to be copied (and is is assumed that the full system will be build and made available to the installer).
+                The symbolic linking is necessary for the bootloader-installer to pick up the files to be copied (and it is assumed that the full system will be build and made available to the installer).
                 Nix needs to be called with »--impure« when evaluating this.
             '';
             enableByDefault = false;
@@ -316,7 +339,6 @@ in {
                     modules = pkgs.runCommandLocal old.name { } "mkdir $out ; cp -a ${old}/lib $out/lib";
                 } "mkdir $out ; ln -sfT $old/bzImage $out/bzImage ; cp -a $modules/lib $out/lib"; }
             ];
-            system.build.initialRamdiskSecretAppender = lib.mkForce "";
         });
 
         stripInitrd = ({
@@ -345,7 +367,7 @@ in {
 
         shrinkSystemd = ({
             description = ''Shrink »systemd«: The default NixOS systemd is built with support for pretty much everything. This remove most of that.'';
-            nixpkgs.overlays = [ (final: prev: {
+            nixpkgs.overlays = lib.mkIf (!config.system.build?isVmExec) [ (final: prev: {
                 # nixpkgs/pkgs/os-specific/linux/systemd/default.nix#L608
                 systemd = (prev.systemd.override {
                     # keys taken from definition of »systemd-minimal« in »pkgs/top-level/all-packages.nix:23048«:
@@ -386,16 +408,13 @@ in {
             }) ];
             services.nscd.enable = false; system.nssModules = lib.mkForce [ ];
             systemd.suppressedSystemUnits = [ # (the test to automatically exclude these does for some reason not work)
-                "cryptsetup.target" "cryptsetup-pre.target" "remote-cryptsetup.target" # withCryptsetup
-
-                #"systemd-logind.service" "autovt@.service" "systemd-user-sessions.service" "dbus-org.freedesktop.machine1.service" "dbus-org.freedesktop.login1.service" "user@.service" "user-runtime-dir@.service" # withLogind
-
                 "systemd-coredump.socket" "systemd-coredump@.service" # withCoredump
-
-                "systemd-importd.service" "dbus-org.freedesktop.import1.service" #withImportd
-
-                "systemd-timedated.service" "systemd-timesyncd.service" "systemd-localed.service" "dbus-org.freedesktop.timedate1.service" "dbus-org.freedesktop.locale1.service" # withTimedated/withTimesyncd
+                "cryptsetup.target" "cryptsetup-pre.target" "remote-cryptsetup.target" # withCryptsetup
                 "systemd-hostnamed.service" "dbus-org.freedesktop.hostname1.service" # withHostnamed
+                "systemd-importd.service" "dbus-org.freedesktop.import1.service" #withImportd
+                #"systemd-logind.service" "autovt@.service" "systemd-user-sessions.service" "dbus-org.freedesktop.machine1.service" "dbus-org.freedesktop.login1.service" "user@.service" "user-runtime-dir@.service" # withLogind
+                "systemd-oomd.service" "systemd-oomd.socket" # withOomd
+                "systemd-timedated.service" "systemd-timesyncd.service" "systemd-localed.service" "dbus-org.freedesktop.timedate1.service" "dbus-org.freedesktop.locale1.service" # withTimedated/withTimesyncd
             ];
         });
 
@@ -413,6 +432,7 @@ in {
                 usedModules = lib.mkOption { description = "Output of »lsmod« used in »make LSMOD=\${shrinkKernel.usedModules} localmodconfig« to remove all modules that are unused (at the time »lsmod« is called) from the kernel package."; type = lib.types.nullOr lib.types.path; default = null; };
                 overrideConfig = lib.mkOption { description = "Config flags to force to a specific value after applying »make localmodconfig«."; type = lib.types.attrsOf lib.types.str; default = { }; };
             };
+            #virtualisation.vmVariantExec.th.minify.shrinkKernel.enable = lib.mkForce false; # The minified kernel probably does not boot in the VM (missing drivers), but there is also no point using it there.
 
             # further optimizations: lto,
             # $ wget -qO- https://cdn.kernel.org/pub/linux/kernel/v5.x/linux-5.15.30.tar.xz | xzcat - | tar -xf- --strip-components=1
@@ -421,6 +441,12 @@ in {
                 SATA_AHCI = "m"; # »ahci« module
                 OVERLAY_FS = "m"; # »overlay« module
                 BLK_DEV_LOOP = "m"; # »loop« module
+
+                # required (as modules) to install in VM
+                # TODO: test whether this has a size impact (on the main system)
+                VIRTIO = "m"; VIRTIO_BLK = "m"; VIRTIO_MMIO = "m"; VIRTIO_NET = "m"; VIRTIO_PCI = "m"; SCSI_VIRTIO = "m"; VIRTIO_BALLOON = "m"; VIRTIO_CONSOLE = "m";
+                HW_RANDOM = "m"; HW_RANDOM_VIRTIO = "m"; VIRTIO_FS = "m"; NET_9P = "m"; "9P_FS" = "m"; NET_9P_VIRTIO = "m";
+                NET = "y"; INET = "y"; NETWORK_FILESYSTEMS = "y"; SCSI = "m"; SCSI_LOWLEVEL = "y"; # dependencies
             };
 
             boot.kernelPackages = lib.mkOverride 80 (let # (more important than normal, but not yet force)
@@ -434,7 +460,7 @@ in {
                         cp $baseConfig .config
                         make LSMOD=$usedModules localmodconfig
                         for var in $overrideConfig ; do
-                            perl -pi -e 's;^(# )?'"''${var/=*/}"'\b.*;'"$var"';' .config
+                            perl -p0i -e 's;\n(# )?'"''${var/=*/}"'\b.*|$;\n'"$var"';' .config
                         done
                     )'';
                     installPhase = ''mv .config $out'';
@@ -455,7 +481,7 @@ in {
     ## Notes on removing even more NixOS default dependencies:
 
     #  ncdu -x /tmp/nixos-install-target/nix/store/
-    #  nix why-depends --all /tmp/nixos-install-target/run/current-system /nix/store/... | cat
+    #  nix why-depends --all --precise /tmp/nixos-install-target/run/current-system /nix/store/... | cat
 
     # Things we still have (to keep, reduce, or get rid of):
     # »linux«: ~90MB/120MB. The linux kernel plus modules. See efforts on this below.

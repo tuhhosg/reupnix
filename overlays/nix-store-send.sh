@@ -71,49 +71,53 @@ function prepare-sending {
     afterTop=(  $( normalize-paths "${argv[1]:?"Required: Store components that will instead exist after applying the stream (as colon-separated list)."}" ) )
     if [[ "${afterTop[@]}" == "${beforeTop[@]}" ]] ; then echo "The »after« and »before« arguments are identical" ; exit 1 ; fi
 
+    verboseShow=: ; if [[ ${args[verbose]:-} ]] ; then verboseShow='declare -p' ; fi
+
     afterComps=$( resolve-dependencies "${afterTop[@]}" ) # artifacts we need to have
-    #    declare -p afterComps
+    $verboseShow afterComps
     beforeComps=$( resolve-dependencies "${beforeTop[@]}" ) # artifacts we currently have
-    #    declare -p beforeComps
+    $verboseShow beforeComps
 
     createComps=$( list-complement "$afterComps" "$beforeComps" ) # artifacts we create
-    #    declare -p createComps
+    $verboseShow createComps
     pruneComps=$( list-complement "$beforeComps" "$afterComps" ) # artifacts we keep
-    #    declare -p pruneComps
+    $verboseShow pruneComps
     keepComps=$( list-complement "$beforeComps" "$pruneComps" ) # artifacts we no longer need
-    #    declare -p keepComps
+    $verboseShow keepComps
 
     find-files $createComps ; s=$(declare -p __ret__) ; eval "${s/__ret__/-g linkHM}" # files linked from artifacts that we create (i.e. will create new links to)
-    #    declare -p linkHM
+    $verboseShow linkHM
     find-files $keepComps ; s=$(declare -p __ret__) ; eval "${s/__ret__/-g keepHM}" # files linked from artifacts that we keep
-    #    declare -p keepHM
+    $verboseShow keepHM
     find-files $pruneComps ; s=$(declare -p __ret__) ; eval "${s/__ret__/-g oldHM}" # files linked from artifacts that we can delete
-    #    declare -p oldHM
+    $verboseShow oldHM
 
     pruneHL=$( list-complement "$( printf '%s\n' "${!oldHM[@]}" )" "$( printf '%s\n' "${!keepHM[@]}" )"$'\n'"$( printf '%s\n' "${!linkHM[@]}" )" ) # files we no longer need
-    #    declare -p pruneHL
+    $verboseShow pruneHL
     uploadHL=$( list-complement "$( printf '%s\n' "${!linkHM[@]}" )" "$( printf '%s\n' "${!keepHM[@]}" )"$'\n'"$( printf '%s\n' "${!oldHM[@]}" )" ) # files we need but don't have
-    #    declare -p uploadHL
-    declare -g -A uploadHM=( ) ; [[ ! $uploadHL ]] || eval 'declare -g -A uploadHM=( ['"${uploadHL//$'\n'/']="x" ['}"']="x" )' # (the above as map <hash,"x">)
-    #    declare -p uploadHM
-    declare -g -A restoreHM=( ) ; for hash in "${!linkHM[@]}" ; do [[ ${uploadHM[$hash]:-} ]] || restoreHM[$hash]=${linkHM[$hash]} ; done # files we need and have (just not in the .links dir)
-    #    declare -p restoreHM
+    $verboseShow uploadHL
+    #declare -g -A uploadHM=( ) ; [[ ! $uploadHL ]] || eval 'declare -g -A uploadHM=( ['"${uploadHL//$'\n'/']="x" ['}"']="x" )' # (the above as map <hash,"x">)
+    #$verboseShow uploadHM
+    restoreHL=$( list-complement "$( printf '%s\n' "${!linkHM[@]}" )" "$uploadHL" ) # files we need and have (just not in the .links dir)
+    $verboseShow restoreHL
+    #declare -g -A restoreHM=( ) ; for hash in "${!linkHM[@]}" ; do [[ ${uploadHM[$hash]:-} ]] || restoreHM[$hash]=${linkHM[$hash]} ; done # files we need and have (just not in the .links dir)
+    #$verboseShow restoreHM
 
 }
 
 # »/nix/store/.links/« is not always available, so get the files from the lookup maps:
 function get-file-path { # 1: hash
     local hash=$1
-    if [[ ${linkHM[$hash]:-} ]] ; then printf /nix/store/%s "${linkHM[$hash]%%//*}" ; return 0 ; fi
-    if [[ ${keepHM[$hash]:-} ]] ; then printf /nix/store/%s "${keepHM[$hash]%%//*}" ; return 0 ; fi
-    if [[  ${oldHM[$hash]:-} ]] ; then printf /nix/store/%s  "${oldHM[$hash]%%//*}" ; return 0 ; fi
+    if [[ ${keepHM[$hash]:-} ]] ; then printf %s "${keepHM[$hash]%%//*}" ; return 0 ; fi
+    if [[  ${oldHM[$hash]:-} ]] ; then printf %s  "${oldHM[$hash]%%//*}" ; return 0 ; fi
+    if [[ ${linkHM[$hash]:-} ]] ; then printf %s "${linkHM[$hash]%%//*}" ; return 0 ; fi
     echo "Can't locate file $hash" ; exit 1
 }
 
 function show-stats { # 1: dest
     dest=$1 ; if (( dest > 0 )) &>/dev/null ; then dest='/proc/self/fd/'$dest ; fi
-    local sendCount=${#uploadHM[@]}  ; local sendSize=0 ; for hash in "${!uploadHM[@]}"  ; do let sendSize+=$( stat --printf="%s" $(get-file-path "$hash") || echo 0 ) || true ; done
-    local linkCount=${#restoreHM[@]} ; local linkSize=0 ; for hash in "${!restoreHM[@]}" ; do let linkSize+=$( stat --printf="%s" $(get-file-path "$hash") || echo 0 ) || true ; done
+    local sendCount=$( wc -l <<<"$uploadHL" )  ; local sendSize=0 ; for hash in $uploadHL  ; do let sendSize+=$( stat --printf="%s" /nix/store/$(get-file-path $hash) || echo 0 ) || true ; done
+    local linkCount=$( wc -l <<<"$restoreHL" ) ; local linkSize=0 ; for hash in $restoreHL ; do let linkSize+=$( stat --printf="%s" /nix/store/$(get-file-path $hash) || echo 0 ) || true ; done
     (
         echo "Sending ${#afterTop[@]} root path${afterTop[1]:+s} referencing $( <<<"$afterComps" wc -l ) store paths"
         echo "onto    ${#beforeTop[@]} root path${beforeTop[1]:+s} referencing $( <<<"$beforeComps" wc -l ) store paths,"
@@ -137,7 +141,7 @@ function do-send { ( dir=$(mktemp -d) ; trap "rm -rf $dir" EXIT ; cd $dir ; (
 
     toplevel="${afterTop[@]}" ; <<< "$toplevel" send-stream .toplevel-paths - ${#toplevel}
 
-    lines=( ) ; size=0 ; for hash in "${!restoreHM[@]}" ; do line=${hash}=${restoreHM[$hash]%%//*} ; lines+=($line) ; let size+=${#line}+1 ; done
+    lines=( ) ; size=0 ; for hash in $restoreHL ; do line=${hash}=$(get-file-path $hash) ; lines+=($line) ; let size+=${#line}+1 ; done
     printf "%s\0" "${lines[@]}" | send-stream .restore-links - $size
 
     cerate-paths-script >./.cerate-paths ; send-file .cerate-paths ./.cerate-paths
@@ -149,11 +153,11 @@ function do-send { ( dir=$(mktemp -d) ; trap "rm -rf $dir" EXIT ; cd $dir ; (
 
     if [[ ${args[no-names]:-} ]] ; then
         while IFS= read -r hash ; do
-            send-file . $(get-file-path "$hash")
+            send-file . /nix/store/$(get-file-path $hash)
         done <<< "$uploadHL"
     else
         while IFS= read -r hash ; do
-            send-file "$hash" $(get-file-path "$hash")
+            send-file $hash /nix/store/$(get-file-path $hash)
         done <<< "$uploadHL"
     fi
 

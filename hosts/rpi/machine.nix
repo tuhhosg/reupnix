@@ -30,12 +30,12 @@ in { imports = [ ({ ## Hardware
         ramdisk_addr_r = "0x03800000";
         fdtfile = "-"; # "broadcom/bcm2711-rpi-4-b.dtb"; # If it is not set here, then somewhere else actually sets the same value. If it is not set at all, uboot tries to guess it (and guesses wrong, also the path structure in »config.hardware.deviceTree.package« is not what u-boot expects). If the file fails to load (e.g. because it is set to »-«), u-boot assumes that there is a device tree at »fdt_addr=2eff8e00« already, where indeed the GPU firmware has put the device tree it created from the ».dtb« file and »config.txt«.
         /*
-    setenv kernel_addr_r  0x00200000
-    setenv scriptaddr     0x03200000
-    setenv pxefile_addr_r 0x03300000
-    setenv fdt_addr_r     0x03400000
-    setenv ramdisk_addr_r 0x03800000
-    sysboot mmc 0:1 fat ${scriptaddr} /extlinux/extlinux.conf
+        setenv kernel_addr_r  0x00200000
+        setenv scriptaddr     0x03200000
+        setenv pxefile_addr_r 0x03300000
+        setenv fdt_addr_r     0x03400000
+        setenv ramdisk_addr_r 0x03800000
+        sysboot mmc 0:1 fat ${scriptaddr} /extlinux/extlinux.conf
         */
     };
     hardware.deviceTree.filter = "bcm2711-rpi-4-b.dtb"; # bcm2711-rpi-cm4.dtb
@@ -78,7 +78,7 @@ in { imports = [ ({ ## Hardware
 
     boot.kernelParams = [ "boot.shell_on_fail" ]; wip.base.panic_on_fail = false;
 
-    wip.services.dropbear.rootKeys = [ ''${lib.readFile "${inputs.self}/utils/res/niklas-gollenstede.pub"}'' ];
+    wip.services.dropbear.rootKeys = lib.readFile "${inputs.self}/utils/res/niklas-gollenstede.pub";
     wip.services.dropbear.hostKeys = [ ../../utils/res/dropbear_ecdsa_host_key ];
 
 

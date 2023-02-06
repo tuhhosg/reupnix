@@ -1,4 +1,4 @@
-#!@shell@ -eu
+#!@shell@ -u
 
 # TODO:
 # * before applying, should validate that "existing store artifacts" actually exist
@@ -20,6 +20,7 @@ declare -g -A allowedArgs=(
                [--dry-run]="Don't actually perform any action that would write outside of »--dir«. The »install« phase fails if targets aren't already in /nix/store/."
                [--verbose]="Log out significant commands before running them."
                 [--status]="Show status messages (when phases complete)."
+                 [--debug]="Enable bash tracing and open a debug shell on errors. DO NOT use this when passing data on stdin!"
             [--no-remount]="Do not remount the »/nix/store« as writable for this process (requires it to be writable already)."
 )
 details="
@@ -46,6 +47,8 @@ for stage in read-input restore-links install save-links delete prune-links clea
     allowedArgs[--only-$stage]="Do only run stage »$stage«."
 done
 
+set -e # TODO: get rid of this and use »|| fail«
+
 function main {
     generic-arg-parse "$@"
     generic-arg-help "$0" '' "$description" "$details"
@@ -54,11 +57,17 @@ function main {
     if [[ $(id -u) == 0 ]] && ( ! touch /nix/store/.rw-test &>/dev/null || ! rm /nix/store/.rw-test &>/dev/null ) ; then
         if [[ ! ${args[no-remount]:-} ]] ; then
             if [[ ! ${args[internal-no-unshare]:-} ]] ; then exec @unshare@ --fork --mount --uts --mount-proc --pid -- "$0" --internal-no-unshare "$@" ; fi
-            mount --make-rprivate / ; mount --bind /nix/store /nix/store ; mount -o remount,rw /nix/store
+            mount --make-rprivate / && mount --bind /nix/store /nix/store && mount -o remount,rw /nix/store || exit
         fi
     fi
     unset args[internal-no-unshare]
     generic-arg-verify 3
+
+    fail() { code=$? ; exit $code ; }
+    if [[ ${args[debug]:-} ]] ; then
+        fail() { : code=$? ; @shell@ || exit ; }
+        set -x
+    fi
 
     dir=${args[dir]:-/nix/store/.receive}
     links=$dir/.links ; if [[ -e /nix/store/.links ]] ; then links=/nix/store/.links ; fi ; if [[ ${args[links-dir]:-} ]] ; then links=${args[links-dir]} ; fi
@@ -123,12 +132,12 @@ function do-restore-links {
     # TODO: this is idempotent across »cleanup« only if »$links« persists (otherwise, if »do-delete« was executes, the files that ».restore-links« references to don't exist anymore. Though in that case, »do-install« also must have completed, which means the links aren't needed anyway.)
     if [[ -e $dir/.data-end && ${args[skip-completed]:-} && ! -e $dir/.restore-links ]] ; then return 0 ; fi
     if [[ ! -e $dir/.restore-links ]] ; then echo "Can't restore links, meta file is missing" ; exit 1 ; fi
-    mkdir -p "$links" ; cd "$links"
-    while IFS== read -r -d $'\0' hash path ; do
+    mkdir -p "$links" ; cd "$links" || fail
+    while IFS== read -u3 -r -d $'\0' hash path ; do
         # $links never gets written to (thus can't contain partial files) and $dir gets cleared on error, so anything in $links should be good:
-        [[ -f ./$hash || -L ./$hash ]] || ( $v1 ; ln -T /nix/store/"$path" ./$hash )
-    done <"$dir"/.restore-links
-    rm "$dir"/.restore-links
+        [[ -f ./$hash || -L ./$hash ]] || ( $v1 ; ln -T /nix/store/"$path" ./$hash ) || fail
+    done 3<"$dir"/.restore-links
+    rm "$dir"/.restore-links || fail
     status 'restored hardlinks to existing files'
 }
 

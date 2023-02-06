@@ -13,8 +13,8 @@ dirname: inputs: pkgs: let
     inherit (inputs.self) lib;
     inherit (lib.th.testing pkgs) toplevel override unpinInputs measure-installation collect-deps merge-deps;
 
-    uut = unpinInputs inputs.self.nixosConfigurations.x64-minimal;
-    base = unpinInputs inputs.self.nixosConfigurations.x64-baseline;
+    uut = unpinInputs inputs.self.nixosConfigurations."new:x64-minimal";
+    base = unpinInputs inputs.self.nixosConfigurations."new:x64-baseline";
 
 in ''
 echo "Installation measurements (x64-baseline):"

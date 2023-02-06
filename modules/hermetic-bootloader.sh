@@ -75,8 +75,9 @@ function build-tree {( set -eu ; # (void)
     fi
     if [[ @{cfg.loader} == systemd-boot ]] ; then
         config-systemd-boot "$default"
-        mkdir -p $tree/EFI/systemd ; ln -sT @{pkgs.systemd}/lib/systemd/boot/efi/systemd-bootx64.efi $tree/EFI/systemd/systemd-bootx64.efi
-        mkdir -p $tree/EFI/BOOT    ; ln -sT @{pkgs.systemd}/lib/systemd/boot/efi/systemd-bootx64.efi $tree/EFI/BOOT/BOOTX64.EFI
+        arch=x64 ; if [[ @{pkgs.system} == aarch64-* ]] ; then arch=aa64 ; fi
+        mkdir -p $tree/EFI/systemd ; ln -sT @{pkgs.systemd}/lib/systemd/boot/efi/systemd-boot${arch}.efi $tree/EFI/systemd/systemd-boot${arch}.efi
+        mkdir -p $tree/EFI/BOOT    ; ln -sT @{pkgs.systemd}/lib/systemd/boot/efi/systemd-boot${arch}.efi $tree/EFI/BOOT/BOOT${arch^^}.EFI
     fi
     for path in "@{!cfg.extraFiles[@]}" ; do
         mkdir -p "$(dirname "$path")" ; ln -sT "@{cfg.extraFiles[$path]}" $tree/"$path"
@@ -122,8 +123,8 @@ function write-boot-partition {( set -eu ; # 1: tree, 2: blockDev, 3: label, 4?:
 )}
 
 function get-parent-disk {( set -eu ; # 1: partition
-    partition=$( @{pkgs.coreutils}/bin/realpath "$1" ) ; shopt -s extglob # required for the »+([0-9])«
-    if [[ $partition == /dev/sd* ]] ; then echo "${partition%%+([0-9])}" ; else echo "${partition%%p+([0-9])}" ; fi
+    export PATH=@{pkgs.coreutils}/bin
+    echo /dev/$( basename "$( readlink -f /sys/class/block/"$( basename "$( realpath "$1" )" )"/.. )" )
 )}
 
 function activate-as-slot {( set -eu ; # 1: tree, 2: index, 3: label, 4?: selfRef

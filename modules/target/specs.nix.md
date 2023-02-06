@@ -50,11 +50,11 @@ in {
         '';
 
 
-    }) (lib.mkIf (config.specialisation == { }) {
+    }) (lib.mkIf (config.specialisation == { } && cfg.name != null) {
         # Config within a specialisation only:
 
         system.nixos.tags = [ cfg.name ];
-        boot.loader.enable = true; # generate kernel and initramfs, the bootloader won't be evaluated
+        system.extraSystemBuilderCmds = ''rm -f $out/initrd'';
 
     }) (lib.mkIf (config.specialisation != { }) {
         # Config outside the specialisations only:

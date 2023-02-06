@@ -13,15 +13,15 @@ dirname: inputs: pkgs: let
     inherit (inputs.self) lib;
     inherit (lib.th.testing pkgs) toplevel override unpinInputs measure-installation nix-store-send;
 
-    base = unpinInputs inputs.self.nixosConfigurations.x64-minimal;
+    base = unpinInputs inputs.self.nixosConfigurations."new:x64-minimal";
     old = override base { # »override« (for some reason) does not affect containers, and targeting it explicitly also doesn't work ...
         specialisation.test1.configuration.th.target.containers.containers = lib.mkForce { };
     };
-    new = override old (let config = { nixpkgs.overlays = [ (final: prev: {
+    new = override old ({ config, ... }: { nixpkgs.overlays = lib.mkIf (!config.system.build?isVmExec) [ (final: prev: {
         glibc = prev.glibc.overrideAttrs (old: { trivialChange = 42 ; });
-    }) ]; }; in config // {
+        libuv = prev.libuv.overrideAttrs (old: { doCheck = false; });
+    }) ]; system.nixos.tags = [ "glibc" ]; });
         #specialisation.test1.configuration.th.target.containers.containers.native.modules = [ (_: config) ]; # this creates an infinite recursion
-    });
 
 in ''
 echo "Update stream when trivially changing glibc"
