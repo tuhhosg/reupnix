@@ -5,7 +5,7 @@ dirname: inputs@{ self, nixpkgs, ...}: pkgs: let
     wrap = script: ''
         set -eu
         PATH=${lib.makeBinPath (lib.unique (map (p: p.outPath) (lib.filter lib.isDerivation pkgs.stdenv.allowedRequisites)))}
-        cd $(mktemp -d) ; [[ $PWD != / ]] || exit 1
+        export out=$PWD/out ; cd /"$(mktemp -d)" && [[ $PWD != / ]] || exit 1
         if [[ $(id -u) == 0 ]] ; then
             ${pkgs.util-linux}/bin/mount -t tmpfs tmpfs $PWD ; cd $PWD ; trap "${pkgs.util-linux}/bin/umount -l $PWD ; rmdir $PWD" exit # requires root
         else
@@ -15,10 +15,12 @@ dirname: inputs@{ self, nixpkgs, ...}: pkgs: let
         unset SUDO_USER ; generic-arg-parse "$@"
         ( trap - exit
             if [[ ''${args[debug]:-} ]] ; then set -x ; fi
-            ${script pkgs}
+            ${let thing = script pkgs; in if builtins.isAttrs thing then thing.script else thing}
         )
     '';
-    checks = lib.mapAttrs (name: script: pkgs.writeShellScript "check-${name}.sh" (wrap script)) scripts;
+    checks = lib.mapAttrs (name: script: (pkgs.writeShellScript "check-${name}.sh" (wrap script)).overrideAttrs (old: {
+        passthru = (old.passthru or { }) // (let thing = script pkgs; in if builtins.isAttrs thing then thing else { script = thing; });
+    })) scripts;
     packages = lib.mapAttrs (name: script: pkgs.writeShellScriptBin "check-${name}.sh" (wrap script)) scripts;
     apps = (lib.wip.mapMerge (k: v: { "check:${k}" = { type = "app"; program = "${v}"; }; }) checks) // {
         "check:all" = { type = "app"; program = "${pkgs.writeShellScript "check-all.sh" ''

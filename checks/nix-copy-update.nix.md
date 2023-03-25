@@ -30,7 +30,7 @@ dirname: inputs: pkgs: let
         environment.etc.version.text = "old";
         imports = [ keep-nix ];
     };
-    clb = override new ({ config, ... }: {
+    clb = override old ({ config, ... }: {
         nixpkgs.overlays = lib.mkIf (!config.system.build?isVmExec) [ (final: prev: {
             glibc = prev.glibc.overrideAttrs (old: { trivialChange = 42 ; });
             libuv = prev.libuv.overrideAttrs (old: { doCheck = false; });
@@ -77,7 +77,7 @@ echo "clb system: ${toplevel clb}"
 echo
 ${nix-copy-closure "old" "new"}
 echo
-${nix-copy-closure "new" "clb"}
+${nix-copy-closure "old" "clb"}
 
 ''
 #${frame "echo nix copy"}

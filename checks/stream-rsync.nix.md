@@ -23,16 +23,15 @@ How much that matters depends on the number of files and the average size of the
 ```nix
 #*/# end of MarkDown, beginning of Nix test:
 dirname: inputs: pkgs: let
-    inherit (inputs.self) lib;
-    inherit (lib.th.testing pkgs) toplevel override unpinInputs frame nix-store-send;
+    inherit (inputs.self) lib; test = lib.th.testing pkgs;
 
-    remove-containers = system: override system { # »override« (for some reason) does not affect containers, and targeting it explicitly also doesn't work ...
+    remove-containers = system: test.override system { # »override« (for some reason) does not affect containers, and targeting it explicitly also doesn't work ...
         specialisation.test1.configuration.th.target.containers.containers = lib.mkForce { };
     };
 
-    old = remove-containers (unpinInputs inputs.self.nixosConfigurations."old:x64-minimal");
-    new = remove-containers (unpinInputs inputs.self.nixosConfigurations."new:x64-minimal");
-    clb = override new ({ config, ... }: { nixpkgs.overlays = lib.mkIf (!config.system.build?isVmExec) [ (final: prev: {
+    old = remove-containers (test.unpinInputs inputs.self.nixosConfigurations."old:x64-minimal");
+    new = remove-containers (test.unpinInputs inputs.self.nixosConfigurations."new:x64-minimal");
+    clb = test.override new ({ config, ... }: { nixpkgs.overlays = lib.mkIf (!config.system.build?isVmExec) [ (final: prev: {
         glibc = prev.glibc.overrideAttrs (old: { trivialChange = 42 ; });
         libuv = prev.libuv.overrideAttrs (old: { doCheck = false; });
     }) ]; system.nixos.tags = [ "glibc" ]; });
@@ -40,15 +39,15 @@ dirname: inputs: pkgs: let
 in ''
 # Using »--dry-run« invalidates the measurement, so the old file needs to be copied.
 
-( ${frame "echo 'real update'"} ) 1>&2
+( ${test.frame "echo 'real update'"} ) 1>&2
 echo -n "\addplot coordinates {" > plotUp
 echo -n "\addplot coordinates {" > plotDt
 echo -n "\addplot coordinates {" > plotDw
 
 for size in 8 16 32 64 128 256 512 1k 2k 4k 8k 16k 32k 64k 128k ; do
     echo $'\n'"Differential rsync transfer of update stream onto initial image (with names, block size $size)" 1>&2
-    rm -rf ./prev ; cp ${nix-store-send null old ""}/stream ./prev
-    data=$( ${pkgs.rsync}/bin/rsync --no-whole-file --stats --block-size=$size ${nix-store-send old new ""}/stream ./prev )
+    rm -rf ./prev ; cp ${test.nix-store-send null old ""}/stream ./prev
+    data=$( ${pkgs.rsync}/bin/rsync --no-whole-file --stats --block-size=$size ${test.nix-store-send old new ""}/stream ./prev )
     <<<"$data" grep -Pe 'Total|data' 1>&2
 
     data=$( <<<"$data" sed s/,//g )
@@ -63,19 +62,19 @@ echo " }; % real down" >>plotDw
 if [[ ,''${args[plot]:-}, == *,1,* ]] ; then cat plot* ; fi
 
 echo $'\n'"Differential rsync transfer of update stream onto initial image (without names, block size 512)" 1>&2
-rm -rf ./prev ; cp ${nix-store-send null old "--no-names"}/stream ./prev
-${pkgs.rsync}/bin/rsync --no-whole-file --stats --block-size=700 ${nix-store-send old new "--no-names"}/stream ./prev | grep -Pe 'Total|data' 1>&2
+rm -rf ./prev ; cp ${test.nix-store-send null old "--no-names"}/stream ./prev
+${pkgs.rsync}/bin/rsync --no-whole-file --stats --block-size=700 ${test.nix-store-send old new "--no-names"}/stream ./prev | grep -Pe 'Total|data' 1>&2
 
 ( echo ; echo ) 1>&2
-( ${frame "echo 'invalidate glibc'"} ) 1>&2
+( ${test.frame "echo 'invalidate glibc'"} ) 1>&2
 echo -n "\addplot coordinates {" > plotUp
 echo -n "\addplot coordinates {" > plotDt
 echo -n "\addplot coordinates {" > plotDw
 
 for size in 8 16 32 64 128 256 512 1k 2k 4k 8k 16k 32k 64k 128k ; do
     echo $'\n'"Differential rsync transfer of update stream onto initial image (with names, block size $size)" 1>&2
-    rm -rf ./prev ; cp ${nix-store-send null new ""}/stream ./prev
-    data=$( ${pkgs.rsync}/bin/rsync --no-whole-file --stats --block-size=$size ${nix-store-send new clb ""}/stream ./prev )
+    rm -rf ./prev ; cp ${test.nix-store-send null new ""}/stream ./prev
+    data=$( ${pkgs.rsync}/bin/rsync --no-whole-file --stats --block-size=$size ${test.nix-store-send new clb ""}/stream ./prev )
     <<<"$data" grep -Pe 'Total|data' 1>&2
 
     data=$( <<<"$data" sed s/,//g )
@@ -90,6 +89,6 @@ echo " }; % glibc down" >>plotDw
 if [[ ,''${args[plot]:-}, == *,2,* ]] ; then cat plot* ; fi
 
 echo $'\n'"Differential rsync transfer of update stream onto initial image (without names, block size 512)" 1>&2
-rm -rf ./prev ; cp ${nix-store-send null new "--no-names"}/stream ./prev
-${pkgs.rsync}/bin/rsync --no-whole-file --stats --block-size=700 ${nix-store-send new clb "--no-names"}/stream ./prev | grep -Pe 'Total|data' 1>&2
+rm -rf ./prev ; cp ${test.nix-store-send null new "--no-names"}/stream ./prev
+${pkgs.rsync}/bin/rsync --no-whole-file --stats --block-size=700 ${test.nix-store-send new clb "--no-names"}/stream ./prev | grep -Pe 'Total|data' 1>&2
 ''

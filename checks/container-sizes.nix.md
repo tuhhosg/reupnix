@@ -18,13 +18,13 @@ dirname: inputs: pkgs: let
     inherit (inputs.self) lib;
     inherit (lib.th.testing pkgs) toplevel override unpinInputs resize frame collect-deps du-deps run-in-vm;
 
-    base-minimal  = override (unpinInputs inputs.self.nixosConfigurations.x64-minimal) {
+    base-minimal  = override (unpinInputs inputs.self.nixosConfigurations."old:x64-minimal") {
         nixpkgs.overlays = [ (final: prev: { redis = prev.redis.overrideAttrs (old: { doCheck = false; }); }) ];
     };
-    base-baseline = override (unpinInputs inputs.self.nixosConfigurations.x64-baseline) {
+    base-baseline = override (unpinInputs inputs.self.nixosConfigurations."old:x64-baseline") {
         nixpkgs.overlays = [ (final: prev: { redis = prev.redis.overrideAttrs (old: { doCheck = false; }); }) ];
     };
-    declareUid = userName: uid: { users.users.${userName} = { isSystemUser = true; uid = uid; group = lib.mkDefault userName; }; users.groups.${userName}.gid = uid; };
+    fixUser = user: id: { users.users.${user} = { isSystemUser = true; uid = id; group = lib.mkDefault user; }; users.groups.${user}.gid = id; };
 
     get-image = attrs: lib.th.extract-docker-image pkgs (pkgs.dockerTools.pullImage attrs);
 
@@ -69,11 +69,11 @@ dirname: inputs: pkgs: let
         };
         mongo = rec {
             default = get-image { imageName = "mongo"; finalImageTag = "5.0.10-focal"; imageDigest = "sha256:52dbb83b1f808c727f5f649b89eb1a0287c8f8d44f94f51b296bda258c570101"; sha256 = "05zgi4cnv1gnbr8zdqw49qhz71a5zmb7iwphg0yjbfi3sfhfjv9w"; };
-            nixos = { pkgs, ...}: { services.mongodb.enable = true; } // (declareUid "mongodb" 999);
+            nixos = { pkgs, ...}: { services.mongodb.enable = true; } // (fixUser "mongodb" 999);
         };
         traefik = rec {
             default = get-image { imageName = "traefik"; finalImageTag = "2.8.3"; imageDigest = "sha256:ad8c1935c4b901e10b62b6868d6369218793c69e7a7ea9c1d036fdc2b919e38e"; sha256 = "0rih03j00vj4sj4bxq7lhfj81vpimv4cs7w7f8ml93fsrl2jgjsb"; };
-            nixos = { pkgs, ...}: { services.traefik.enable = true; } // (declareUid "traefik" 998);
+            nixos = { pkgs, ...}: { services.traefik.enable = true; } // (fixUser "traefik" 998);
         };
         mariadb = rec {
             default = get-image { imageName = "mariadb"; finalImageTag = "10.8.3-jammy"; imageDigest = "sha256:0abf60f81588662e716c27c7f1b54a72b3bf879e0ca88fc393e1741970ec7f3f"; sha256 = "1331x7x2xramckp0qln64c0vh20a3nz5lc31177j7dqapp2j831r"; };
@@ -83,7 +83,7 @@ dirname: inputs: pkgs: let
             default = bullseye;
             bullseye = get-image { imageName = "redis"; finalImageTag = "7.0.4-bullseye"; imageDigest = "sha256:9bc34afe08ca30ef179404318cdebe6430ceda35a4ebe4b67d10789b17bdf7c4"; sha256 = "0l8prb6d3pqc7f78kzyc89mnjlq0672mv2d09v4yr73mb3khzbm8"; };
             alpine = get-image { imageName = "redis"; finalImageTag = "7.0.4-alpine"; imageDigest = "sha256:dc1b954f5a1db78e31b8870966294d2f93fa8a7fba5c1337a1ce4ec55f311bc3"; sha256 = "1s4w7akfay5sk82nwihz5j8r10pqr3ldfqq7a2yfg2a3525dzji8"; };
-            nixos = { pkgs, ...}: { services.redis.servers."".enable = true; } // (declareUid "redis" 997);
+            nixos = { pkgs, ...}: { services.redis.servers."".enable = true; } // (fixUser "redis" 997);
         };
         rabbitmq = rec {
             default = get-image { imageName = "rabbitmq"; finalImageTag = "3.10.7"; imageDigest = "sha256:de9414a812a90aa122ac94f6b2ade20cf5466b8a6ab3ca5624c4e48691e06d27"; sha256 = "0kdrdx0cbcyczvqh047srk44lkbbnzrjyaaimn3gcgzxmj66h1sd"; };
@@ -125,17 +125,17 @@ dirname: inputs: pkgs: let
             default = get-image { imageName = "wordpress"; finalImageTag = "6.0.1-php7.4-apache"; imageDigest = "sha256:461fb4294c0b885e375c5d94521442fce329cc02ef3f49a8001ea342d14ab71a"; sha256 = "0fjqfgcv7611841bq7bvi6hrpb0b166yfzk2p1b7kk4pcmp3jgkw"; };
             nixos = { pkgs, ...}: { services.wordpress.sites.example = { }; nixpkgs.overlays = [ (final: prev: { php = prev.php.override { packageOverrides = final: prev: { extensions = prev.extensions // {
                 fileinfo = prev.extensions.fileinfo.overrideAttrs (attrs: { doCheck = false; }); # this avoids a build error in the package, but it also somehow causes an infinite recursion when included in a nixos-container
-            }; }; }; }) ]; } // (declareUid "wordpress" 996);
+            }; }; }; }) ]; } // (fixUser "wordpress" 996);
         };
         registry = rec {
             default = get-image { imageName = "registry"; finalImageTag = "2.8.1"; imageDigest = "sha256:83bb78d7b28f1ac99c68133af32c93e9a1c149bcd3cb6e683a3ee56e312f1c96"; sha256 = "1y1frqp6xaic409fglas8gi2710plfcmxibxg6pmrab91l2kzd04"; };
-            nixos = { pkgs, ...}: { services.dockerRegistry.enable = true; } // (declareUid "docker-registry" 995);
+            nixos = { pkgs, ...}: { services.dockerRegistry.enable = true; } // (fixUser "docker-registry" 995);
         };
         memcached = rec {
             default = bullseye;
             bullseye = get-image { imageName = "memcached"; finalImageTag = "1.6.16-bullseye"; imageDigest = "sha256:0afaa8e890393e089efc991b62ec98d3dd53e5da995abfa548e5df9c70722015"; sha256 = "138n2kmn2scalgmqs7mjfqhi4nrqyk1kyb5gl0zai9kprfwz2d3a"; };
             alpine = get-image { imageName = "memcached"; finalImageTag = "1.6.16-alpine"; imageDigest = "sha256:22fd822b2417986f627bd96bc687e85360200db73e8bc818fe6ffdfe1f24e413"; sha256 = "0k4c3jy55x42i1fqfl4bszhrcx7y16k9wxxpp19115001cs3vzyw"; };
-            nixos = { pkgs, ...}: { services.memcached.enable = true; } // (declareUid "memcached" 994);
+            nixos = { pkgs, ...}: { services.memcached.enable = true; } // (fixUser "memcached" 994);
         };
     };
 
@@ -155,30 +155,27 @@ dirname: inputs: pkgs: let
     #du = paths: ''$( cat ${du-deps paths} )'';
     du = paths: ''$( du --apparent-size --block-size=1 --summarize ${collect-deps paths} | cut -f1 )'';
 
-in ''
+in { inherit images; script = ''
 function sum-size {
     local sum=0 ; while IFS= read -r num ; do
         let sum+=$num
     done < <( cut -f 1 ) ; echo $sum
 }
 
-touch table1 table2
 echo -n "\addplot coordinates {" | tee apparent layered store >/dev/null # plot 1
 echo -n "\addplot coordinates {" | tee imgMax imgMin nixMini nixBase >/dev/null # plot 2
 
 
 ## Table 1: container image versions and types
-echo "| Name | Version | Variants |" >>table1
-echo "|:-----|:-------:|:-----------------------------------:|" >>table1
-${lib.concatStringsSep "\n" (lib.mapAttrsToList (name: vars: ''echo "| ${name} | ${tag-version vars.default} | ${tag-suffix vars.default} ${if vars?alpine then "alpine" else ""} ${if vars?slim then tag-suffix vars.slim else ""} ${if vars?alt then "alt=${tag-suffix vars.alt}" else ""} |" >>table1'') images)}
+echo "name,version,variants" >$out/oci-variants.csv
+${lib.concatStringsSep "\n" (lib.mapAttrsToList (name: vars: ''echo "${name},${tag-version vars.default},${tag-suffix vars.default}${if vars?alpine then " alpine" else ""}${if vars?slim then " ${tag-suffix vars.slim}" else ""}${if vars?alt then " alt=${tag-suffix vars.alt}" else ""} \\\\" >>$out/oci-variants.csv'') images)}
 
 
 ## Table 2: container image and NixOS install sizes
 ## Plot 2: table 2 as plot
 baseMinSize=${du (toplevel base-minimal)}
 baseBasSize=${du (toplevel base-baseline)}
-echo "|  Name  | Largest Image | Smallest Image | NixOS-minimal | NixOS-baseline |" >>table2
-echo "|:-------|--------:|--------:|--------:|" >>table2
+echo "variant,service,size" >$out/oci-individual.csv
 ${lib.concatStringsSep "\n" (lib.mapAttrsToList (name: vars: ''
     imgMin=$(( 10 ** 12 )) ; imgMax=0
     ${lib.concatMapStringsSep "\n" (image: ''
@@ -190,12 +187,15 @@ ${lib.concatStringsSep "\n" (lib.mapAttrsToList (name: vars: ''
     ${if vars?nixos then ''
         nixMini=$(( ${du (toplevel (override base-minimal  vars.nixos))} - $baseMinSize ))
         nixBase=$(( ${du (toplevel (override base-baseline vars.nixos))} - $baseBasSize ))
-        echo "| ${name} | $(( $imgMax /1024/1024 )) | $(( $imgMin /1024/1024 )) | $(( $nixMini /1024/1024 )) | $(( $nixBase /1024/1024 )) |" >>table2
         echo -n " (${name},$imgMax)" >>imgMax ; echo -n " (${name},$imgMin)" >>imgMin ; echo -n " (${name}2,$nixMini)" >>nixMini ; echo -n " (${name}2,$nixBase)" >>nixBase
-    '' else ''
-        echo "| ${name} | $(( $imgMax /1024/1024 )) | $(( $imgMin /1024/1024 )) | -- | -- |" >>table2
-    ''}
+        echo "reconix diff,${name},$nixMini" >>$out/oci-individual.csv
+        echo "nixos diff,${name},nixBase" >>$out/oci-individual.csv
+    '' else ""}
+    echo "largest,${name},$imgMax" >>$out/oci-individual.csv
+    echo "smallest,${name},imgMix" >>$out/oci-individual.csv
 '') images)}
+
+''; disabled = '' # stuff that could be appended to »script«, but that we currently don't use
 
 echo "minimal  NixOS with all apps:               $(( ${du (toplevel (override base-minimal  { imports = map (_:_.nixos or { }) (lib.attrValues images); }))} - $baseMinSize ))"
 ${if false then ''echo "minimal  NixOS with all apps in containers: $(( ${du (toplevel (override base-minimal  { imports = lib.mapAttrsToList (name: vars: if vars?nixos then { th.target.containers.containers.${name}.modules = [ vars.nixos ]; } else { }) images; }))} - $baseMinSize ))"'' else ""}
@@ -231,19 +231,12 @@ ${lib.concatMapStringsSep "\n" (series: ''
 
 '') [ "default" "alt" "slim" "bullseye" "alpine" "alpine+" ]}
 
-if [[ ,''${args[table]:-}, == *,1,* ]] ; then cat table1 ; fi
-if [[ ,''${args[table]:-}, == *,2,* ]] ; then cat table2 ; fi
+echo " };" | tee -a apparent layered store >/dev/null
+cat apparent layered store >$out/fig-oci-combined.tex
+echo '\legend{without sharing, with shared layers, with shared files}' >>$out/fig-oci-combined.tex
 
-if [[ ,''${args[plot]:-}, == *,1,* ]] ; then
-    echo " };" | tee -a apparent layered store >/dev/null
-    cat apparent layered store
-    echo '\legend{without sharing, with shared layers, with shared files}'
-fi
+echo " };" | tee -a imgMax imgMin nixMini nixBase >/dev/null
+cat imgMax imgMin nixMini nixBase >$out/fig-container-individual.tex
+echo '\legend{largest image, smallest image, diff minimal NixOS, diff baseline NixOS}' >>$out/fig-container-individual.tex
 
-if [[ ,''${args[plot]:-}, == *,2,* ]] ; then
-    echo " };" | tee -a imgMax imgMin nixMini nixBase >/dev/null
-    cat imgMax imgMin nixMini nixBase
-    echo '\legend{largest image, smallest image, diff minimal NixOS, diff baseline NixOS}'
-fi
-
-''
+''; }

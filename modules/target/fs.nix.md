@@ -41,7 +41,7 @@ in {
         fileSystems."/"             = { fsType  =  "tmpfs";    device = "tmpfs"; neededForBoot = implied; options = [ "mode=755" ]; };
 
         wip.fs.disks.partitions."system-${hash}" = { type = "8300"; size = null; order = 500; };
-        fileSystems."/system"       = { fsType  =   "ext4";    device = "/dev/disk/by-partlabel/system-${hash}"; neededForBoot = true; options = [ "noatime" "ro" ]; formatOptions = "-O inline_data -E nodiscard -F"; };
+        fileSystems."/system"       = { fsType  =   "ext4";    device = "/dev/disk/by-partlabel/system-${hash}"; neededForBoot = true; options = [ "noatime" "ro" ]; formatOptions = "-O inline_data -b 4k -E nodiscard -F"; };
         fileSystems."/nix/store"    = { options = [ "bind" "ro" "private" ]; device = "/system/nix/store"; neededForBoot = implied; };
 
         systemd.tmpfiles.rules = [

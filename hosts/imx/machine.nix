@@ -1,5 +1,5 @@
 dirname: inputs: { config, pkgs, lib, name, ... }: let inherit (inputs.self) lib; in let
-    suffix = builtins.elemAt (builtins.match ''imx(-(.*))?'' name) 1;
+    flags = lib.tail (lib.splitString "-" name); hasFlag = flag: builtins.elem flag flags;
     hash = builtins.substring 0 8 (builtins.hashString "sha256" name);
 in { imports = [ ({ ## Hardware
 
@@ -53,10 +53,10 @@ in { imports = [ ({ ## Hardware
     '');
 
 
-}) (lib.mkIf (suffix != "minimal") { ## Bloat Test Stuff
+}) (lib.mkIf (!hasFlag "minimal") { ## Bloat Test Stuff
 
     th.minify.enable = lib.mkForce false; th.minify.etcAsOverlay = lib.mkForce false;
-    environment.systemPackages = [ pkgs.curl pkgs.nano pkgs.gptfdisk pkgs.tmux pkgs.htop pkgs.libubootenv ];
+    environment.systemPackages = lib.mkIf ((flags == [ ]) || (hasFlag "debug")) [ pkgs.curl pkgs.nano pkgs.gptfdisk pkgs.tmux pkgs.htop pkgs.libubootenv ];
 
 
 })  ]; }

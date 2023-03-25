@@ -1,0 +1,1537 @@
+diff --git a/flake.nix b/flake.nix
+index 573373c42..14d085576 100644
+--- a/flake.nix
++++ b/flake.nix
+@@ -105,6 +105,7 @@
+             buildPackages.git
+             buildPackages.mercurial # FIXME: remove? only needed for tests
+             buildPackages.jq # Also for custom mdBook preprocessor.
++            buildPackages.lsof
+           ]
+           ++ lib.optionals stdenv.hostPlatform.isLinux [(buildPackages.util-linuxMinimal or buildPackages.utillinuxMinimal)];
+ 
+@@ -115,6 +116,7 @@
+             libarchive
+             boost
+             lowdown-nix
++            minibsdiff
+             gtest
+           ]
+           ++ lib.optionals stdenv.isLinux [libseccomp]
+@@ -132,6 +134,7 @@
+               enableLargeConfig = true;
+             })
+             nlohmann_json
++            minibsdiff
+           ];
+       };
+ 
+@@ -381,6 +384,8 @@
+             });
+ 
+             meta.platforms = systems;
++
++            MINIBSDIFF_LIBS = "-L${minibsdiff}/lib -lminibsdiff";
+           };
+ 
+           lowdown-nix = with final; currentStdenv.mkDerivation rec {
+@@ -399,6 +404,18 @@
+                   BINDIR=${placeholder "bin"}/bin
+             '';
+           };
++
++          minibsdiff = with final; currentStdenv.mkDerivation rec {
++            name = "minibsdiff-0.0.0";
++            src = pkgs.fetchFromGitHub {
++              owner = "thoughtpolice"; repo = "minibsdiff"; rev = "46da8afd98a4620838be4030f8ab4fb1d06b6ff0";
++              sha256 = "sha256-0JLuPIJO5p6yRD3S+63qK4TVaKFb0E9FTnqmlHqbWg0=";
++            };
++            #outputs = [ "out" "lib" "dev" ];
++            installFlags = "PREFIX=${placeholder "out"}";
++            postInstall = ''cp minibsdiff-config.h $out/include/'';
++            nativeBuildInputs = [ ];
++          };
+         };
+ 
+     in {
+@@ -574,7 +591,7 @@
+       });
+ 
+       packages = forAllSystems (system: rec {
+-        inherit (nixpkgsFor.${system}) nix;
++        inherit (nixpkgsFor.${system}) nix minibsdiff;
+         default = nix;
+       } // (nixpkgs.lib.optionalAttrs (builtins.elem system linux64BitSystems) {
+         nix-static = let
+@@ -699,7 +716,7 @@
+ 
+             outputs = [ "out" "dev" "doc" ];
+ 
+-            nativeBuildInputs = nativeBuildDeps;
++            nativeBuildInputs = nativeBuildDeps ++ [ pkgs.gdb ];
+             buildInputs = buildDeps ++ propagatedDeps ++ awsDeps;
+ 
+             inherit configureFlags;
+@@ -717,6 +734,8 @@
+                 # Make bash completion work.
+                 XDG_DATA_DIRS+=:$out/share
+               '';
++
++            MINIBSDIFF_LIBS = "-L${minibsdiff}/lib -lminibsdiff";
+           }
+         )
+         // { default = self.devShells.${system}.stdenv; }
+diff --git a/src/libmain/shared.cc b/src/libmain/shared.cc
+index 6d4365652..6865827e7 100644
+--- a/src/libmain/shared.cc
++++ b/src/libmain/shared.cc
+@@ -279,7 +279,7 @@ LegacyArgs::LegacyArgs(const std::string & programName,
+             .description = description,
+             .labels = {"n"},
+             .handler = {[=](std::string s) {
+-                auto n = string2IntWithUnitPrefix<uint64_t>(s);
++                auto n = string2IntWithUnitSuffix<uint64_t>(s);
+                 settings.set(dest, std::to_string(n));
+             }}
+         });
+diff --git a/src/libmain/shared.hh b/src/libmain/shared.hh
+index 1715374a6..5262e153c 100644
+--- a/src/libmain/shared.hh
++++ b/src/libmain/shared.hh
+@@ -57,7 +57,7 @@ template<class N> N getIntArg(const std::string & opt,
+ {
+     ++i;
+     if (i == end) throw UsageError("'%1%' requires an argument", opt);
+-    return string2IntWithUnitPrefix<N>(*i);
++    return string2IntWithUnitSuffix<N>(*i);
+ }
+ 
+ 
+diff --git a/src/libstore/local-fs-store.cc b/src/libstore/local-fs-store.cc
+index b224fc3e9..0a2633266 100644
+--- a/src/libstore/local-fs-store.cc
++++ b/src/libstore/local-fs-store.cc
+@@ -5,6 +5,7 @@
+ #include "globals.hh"
+ #include "compression.hh"
+ #include "derivations.hh"
++#include "references.hh"
+ 
+ namespace nix {
+ 
+@@ -85,6 +86,14 @@ void LocalFSStore::narFromPath(const StorePath & path, Sink & sink)
+     dumpPath(getRealStoreDir() + std::string(printStorePath(path), storeDir.size()), sink);
+ }
+ 
++void LocalFSStore::showReferencesInPath(const StorePath & path, bool json, Sink & sink)
++{
++    if (!isValidPath(path))
++        throw Error("path '%s' is not valid", printStorePath(path));
++    auto info = queryPathInfo(path);
++    nix::showReferencesInPath(getRealStoreDir() + std::string(printStorePath(path), storeDir.size()), info->references, json, sink);
++}
++
+ const std::string LocalFSStore::drvsLogDir = "drvs";
+ 
+ std::optional<std::string> LocalFSStore::getBuildLogExact(const StorePath & path)
+diff --git a/src/libstore/local-fs-store.hh b/src/libstore/local-fs-store.hh
+index 947707341..0456c4832 100644
+--- a/src/libstore/local-fs-store.hh
++++ b/src/libstore/local-fs-store.hh
+@@ -19,7 +19,7 @@ struct LocalFSStoreConfig : virtual StoreConfig
+         "state", "directory where Nix will store state"};
+     const PathSetting logDir{(StoreConfig*) this, false,
+         rootDir != "" ? rootDir + "/nix/var/log/nix" : settings.nixLogDir,
+-        "log", "directory where Nix will store state"};
++        "log", "directory where Nix will store logs"};
+     const PathSetting realStoreDir{(StoreConfig*) this, false,
+         rootDir != "" ? rootDir + "/nix/store" : storeDir, "real",
+         "physical path to the Nix store"};
+@@ -37,6 +37,7 @@ public:
+     LocalFSStore(const Params & params);
+ 
+     void narFromPath(const StorePath & path, Sink & sink) override;
++    void showReferencesInPath(const StorePath & path, bool json, Sink & sink) override;
+     ref<FSAccessor> getFSAccessor() override;
+ 
+     /* Register a permanent GC root. */
+diff --git a/src/libstore/names.hh b/src/libstore/names.hh
+index 3977fc6cc..7e5ea7b78 100644
+--- a/src/libstore/names.hh
++++ b/src/libstore/names.hh
+@@ -16,7 +16,7 @@ struct DrvName
+     unsigned int hits;
+ 
+     DrvName();
+-    DrvName(std::string_view s);
++    DrvName(const std::string_view s);
+     ~DrvName();
+ 
+     bool matches(const DrvName & n);
+diff --git a/src/libstore/references.cc b/src/libstore/references.cc
+index 3bb297fc8..369f5e1a3 100644
+--- a/src/libstore/references.cc
++++ b/src/libstore/references.cc
+@@ -6,64 +6,217 @@
+ #include <map>
+ #include <cstdlib>
+ #include <mutex>
+-
++#include <iostream>
++#include <nlohmann/json.hpp>
+ 
+ namespace nix {
+ 
+ 
+-static size_t refLength = 32; /* characters */
++static const size_t refLength = 32; /* characters */
++
++template <typename T> static bool insert(T & container, std::string ref, size_t pos);
++template<> bool insert<StringSet>(StringSet & container, std::string ref, size_t pos) {
++    return container.insert(ref).second;
++}
++template<> bool insert<std::vector<std::pair<size_t, std::string>>>(std::vector<std::pair<size_t, std::string>> & container, std::string ref, size_t pos) {
++    container.push_back({ pos, ref }); return true;
++}
+ 
++struct pos { uint8_t bit; uint32_t byte; };
++template <uint8_t nibbles>
++pos getBloomPos(const char * hash) // `hash` must be at least `nibbles` bytes long.
++{
++    // The goal of a bloom filter is to map the elements of its value space (hashes in this case) to its filter slots as evenly and fast as possible.
++    // As far as a bloom filter is concerned, and before encoding, the hashes are evenly distributed random numbers.
++    // With Nix's base32 encoding, the value of the individual bits in the encoded chards is no longer evenly distributed:
++    // 15 out of the 32 base32 chars have a least significant bit of 1, and 16 a 2nd LSB of 1 (so almost evenly distributed).
++    // But only 12 of the 32 chars have their 3rd and 4th LSB as 1, 19 their 5th and 22 their 7th.
++    // The 6th and 8th bit contain no information (are respectively all 1 and all 0).
++    // Thus, the lower nibble holds a (guesstimated) informational content of 3.4 of the 5 bit informational content of a base32 char.
++    // Given that that is pretty close to the maximum of 4 bits per 4 bits, and that it is very easy to just cut off the lower nibble, that's what this function does.
++    // (Maybe better: use just the lower two bits of twice as many chars.)
++    // 3 bits of one char's lower nibble are used to address the bit within each byte of the filter, its remaining bit and those of the other nibbles to address the bytes.
++    // Which chars and bits to use does not matter, as long as it is done the same way for all additions and lookups.
++    // For a false-positive rate of just a few percent, the size of the filter should be about 10 times that of the expected number of elements in the set.
++    uint8_t bit = hash[0] & 0b111;
++    uint32_t byte = (hash[0] >> 3) & 0b1;
++    for (size_t i = 1; i < nibbles; ++i) {
++        byte <<= 4; byte |= hash[1] & 0b1111;
++    }
++    return { bit, byte };
++}
+ 
+-static void search(
+-    std::string_view s,
+-    StringSet & hashes,
+-    StringSet & seen)
++template <uint8_t nibbles>
++HashBloomFilter<nibbles>::HashBloomFilter(const StringSet & hashes)
+ {
++    for (auto & hash : hashes) { add(hash); }
++    ////<<"filter=";
++    //for (size_t i = 0; i < sizeof(bitmap); i++) {
++    //    if (bitmap[i] != 0) //<<i<<"="<<((int)bitmap[i])<<";";
++    //}
++    ////<<std::endl;
++}
++
++template <uint8_t nibbles>
++void HashBloomFilter<nibbles>::add(const std::string_view & hash)
++{
++    auto pos = getBloomPos<nibbles>(hash.data());
++    ////<<"add:hash="<<(hash.data())<<std::endl;
++    ////<<"pos.bit="<<((int)pos.bit)<<std::endl;
++    ////<<"pos.byte="<<(pos.byte)<<std::endl;
++    bitmap[pos.byte] |= (0b1 << pos.bit);
++}
++
++template <uint8_t nibbles>
++bool HashBloomFilter<nibbles>::operator() (const std::string_view & hash, size_t offset)
++{
++    auto pos = getBloomPos<nibbles>(hash.data() + offset);
++    ////<<"get:hash="<<(hash.substr(offset, 32))<<std::endl;
++    ////<<"pos.bit="<<((int)pos.bit)<<std::endl;
++    ////<<"pos.byte="<<(pos.byte)<<std::endl;
++    return (bitmap[pos.byte] & (0b1 << pos.bit)) != 0;
++}
++
++
++/**
++ * @param s The string to search for references. Must be at least `refLength` bytes long.
++ * @returns The number of not-yet-checked, base32 bytes at the tail end of `s`.
++ **/
++template <typename SeenT>
++static size_t search(
++    const std::string_view s,
++    const StringSet & hashes,
++    std::unique_ptr<HashBloomFilter<3>> & bloom,
++    SeenT & seen,
++    size_t skip_s = 0,
++    size_t offset = 0
++) {
++    ////<<"start search"<<std::endl;
++    assert(s.size() >= refLength);
++#if false
+     static std::once_flag initialised;
+-    static bool isBase32[256];
++    static bool _isBase32[256];
+     std::call_once(initialised, [](){
+-        for (unsigned int i = 0; i < 256; ++i) isBase32[i] = false;
++        for (unsigned int i = 0; i < 256; ++i) _isBase32[i] = false;
+         for (unsigned int i = 0; i < base32Chars.size(); ++i)
+-            isBase32[(unsigned char) base32Chars[i]] = true;
++            _isBase32[(unsigned char) base32Chars[i]] = true;
+     });
+-
+-    for (size_t i = 0; i + refLength <= s.size(); ) {
+-        int j;
++    auto isBase32 = [&](unsigned char c) { return _isBase32[c]; };
++#else
++    auto isBase32 = [ ](unsigned char c) { return ( // TODO: benchmark!
++           ((c & 0b1010'0000) == 0b0010'0000) // all  match 0b0x1x'xxxx   (64 left) (removes non-ascii, null, controls, A-Z, @[\]^_)
++        && ((c & 0b0101'0000) != 0b0000'0000) // none match 0bx0x0'xxxx   (48 left) (removes space, !"#$%&'()*+,-./)
++        && ((c & 0b0001'0000) != 0b0001'0000  // none that match 0bxxx1'xxxx ...
++         || (c & 0b0000'1111) <= 0b0000'1010) // have a lower nibble > 10 (38 left) (removes delete, ;<=>?{|}~)
++        // remaining are 0b0011'1010 (:), 0b0110'0000 (`), 0b0110'0101 (e), 0b0110'1111 (o), 0b0111'0100 (u), 0b0111'0101 (t)
++        &&  (c != 'e') // to skip lowercase hex data
++    ); };
++#endif
++
++    bool matched = false; // `match`ed last iteration => only check next char this iteration
++    int skip = 0;
++    for (size_t i = skip_s; i <= s.size() - refLength; ++i) {
++        ////<<"i="<<(i)<<std::endl;
+         bool match = true;
+-        for (j = refLength - 1; j >= 0; --j)
+-            if (!isBase32[(unsigned char) s[i + j]]) {
+-                i += j + 1;
+-                match = false;
+-                break;
++        for (int j = refLength - 1; j >= (matched ? (int)refLength - 1 : skip); --j)
++            if (!isBase32((unsigned char) s[i + j])) {
++                ////<<"i+j="<<(i+j)<<std::endl;
++                i += j; skip = j; match = false; break;
+             }
+-        if (!match) continue;
++        ////<<"match="<<(match)<<std::endl;
++        matched = match; if (match) { skip = 0; } else { continue; }
++        ////<<"\""<< s <<"\".substr("<< i <<","<< refLength <<")"<<std::endl;
++
++        if (!bloom) { bloom.reset(new HashBloomFilter<3>(hashes)); } // TODO: choose to do this (and the size) based on the number of `hashes`.
++        if (!(*bloom)(s, i)) { continue; }
++
+         std::string ref(s.substr(i, refLength));
+-        if (hashes.erase(ref)) {
++        if (!hashes.count(ref)) continue; // TODO: benchmark how often this happens on real store artifacts (and maybe what a common pattern of string is in those cases)
++
++        if (insert(seen, ref, offset + i)) {
+             debug(format("found reference to '%1%' at offset '%2%'")
+-                  % ref % i);
+-            seen.insert(ref);
++                  % ref % (i + offset));
++            //if constexpr (std::is_same<SeenT, StringSet>::value) hashes.erase(ref);
+         }
+-        ++i;
+     }
++    return refLength - 1 - skip;
+ }
+ 
+ 
+-void RefScanSink::operator () (std::string_view data)
++template <typename SeenT>
++void RefScanSink<SeenT>::operator () (std::string_view data)
+ {
++    ////<<"data="<<data<<std::endl;
++    size_t skip = 0; // If the data chunk we append has non-base32 chars, we can skip them when searching data itself.
+     /* It's possible that a reference spans the previous and current
+        fragment, so search in the concatenation of the tail of the
+-       previous fragment and the start of the current fragment. */
+-    auto s = tail;
+-    auto tailLen = std::min(data.size(), refLength);
+-    s.append(data.data(), tailLen);
+-    search(s, hashes, seen);
++       previous fragment(s) and the start of the current fragment. */
++    if (tail.size() && tail.size() + data.size() >= refLength) {
++        auto s = tail; s.append(data.data(), std::min(data.size(), refLength - 1));
++        ////<<"search1(\""<<s<<"\","<<hashes.size()<<","<<seen.size()<<")"<<std::endl;
++        skip = refLength - search(s, hashes, bloom, seen, 0, offset - tail.size());
++    }
+ 
+-    search(data, hashes, seen);
++    if (data.size() >= refLength) {
++        auto tailLen = search(data, hashes, bloom, seen, skip, offset); offset += data.size();
++        tail = data.substr(data.size() - tailLen);
++    } else {
++        auto prevTailLen = (refLength - 1) - data.size(); // Maximum number of previous bytes to keep in the tail.
++        if (prevTailLen < tail.size())
++            tail = tail.substr(tail.size() - prevTailLen);
++        tail.append(data);
++    }
++    assert(tail.size() < refLength);
++}
++template class RefScanSink<StringSet>;
++template class RefScanSink<std::vector<std::pair<size_t, std::string>>>;
+ 
+-    auto rest = refLength - tailLen;
+-    if (rest < tail.size())
+-        tail = tail.substr(tail.size() - rest);
+-    tail.append(data.data() + data.size() - tailLen, tailLen);
++void showReferencesInPath(const Path & path, const StorePathSet & refs, bool json, Sink & sink, PathFilter & filter)
++{
++    if (!refs.size()) { sink("{}"); return; }
++    //if (json) throw Error("Not implemented");
++    StringSet hashes; for (auto & i : refs) { hashes.insert(std::string(i.hashPart())); }
++    auto scanner = RefScanSink<std::vector<std::pair<size_t, std::string>>>(std::move(hashes));
++
++    ////<<"hashes.size()="<<(hashes.size())<<std::endl;
++
++    bool wrote = false;
++    std::function<void(const nix::Path &base, const nix::Path &rel)> scan = [&](const Path & base, const Path & rel) {
++        checkInterrupt();
++        auto path = base + rel; auto st = lstat(path);
++        if (S_ISREG(st.st_mode) || S_ISLNK(st.st_mode)) {
++            scanner.reset();
++            if (S_ISLNK(st.st_mode)) {
++                scanner(readLink(path));
++            } else {
++                readFile(path, scanner, st.st_size);
++            }
++            if (scanner.getResult().size()) {
++                if (json) {
++                    if (wrote) sink("},"); wrote = true; sink(nlohmann::json(rel).dump()); sink(":{");
++                } else {
++                    sink("."); sink(rel); sink("\n"); // TODO: deal with \n in rel
++                }
++                { bool wrote = false; for (auto & [ pos, ref ] : scanner.getResult()) {
++                    auto s = std::to_string(pos);
++                    if (json) {
++                        if (wrote) sink(","); wrote = true; sink("\"");
++                        sink((format("%|1$016x|") % pos).str()); // (this is probably not the most efficient)
++                        sink("\":\""); sink(ref); sink("\"");
++                    } else {
++                        sink(std::to_string(pos)); sink(" "); sink(ref); sink("\n");
++                    }
++                } }
++            }
++        } else if (S_ISDIR(st.st_mode)) {
++            for (auto & entry : readDirectory(path)) { // TODO: sort?
++                scan(base, rel + "/" + entry.name);
++            }
++        }
++    };
++    if (json) { sink("{"); }
++    scan(path, "");
++    if (json) { if (wrote) { sink("}"); } sink("}"); }
+ }
+ 
+ 
+@@ -119,6 +272,8 @@ StorePathSet scanForReferences(
+     PathRefScanSink refsSink = PathRefScanSink::fromPaths(refs);
+     TeeSink sink { refsSink, toTee };
+ 
++    //std::cerr<<"refs.size()="<<(refs.size())<<" ("<<path<<")"<<std::endl;
++
+     /* Look for the hashes in the NAR dump of the path. */
+     dumpPath(path, sink);
+ 
+diff --git a/src/libstore/references.hh b/src/libstore/references.hh
+index 6f381f96c..08dcb4352 100644
+--- a/src/libstore/references.hh
++++ b/src/libstore/references.hh
+@@ -9,25 +9,48 @@ std::pair<StorePathSet, HashResult> scanForReferences(const Path & path, const S
+ 
+ StorePathSet scanForReferences(Sink & toTee, const Path & path, const StorePathSet & refs);
+ 
++void showReferencesInPath(const nix::Path &path, const StorePathSet & refs, bool json, nix::Sink &sink, nix::PathFilter &filter = defaultPathFilter);
++
++template <uint8_t nibbles>
++class HashBloomFilter {
++    uint8_t bitmap[(2<<(nibbles*4-1)) / 8] = { 0 };
++
++    void add(const std::string_view & hash);
++
++public:
++
++    HashBloomFilter(const StringSet & hashes);
++
++    bool operator() (const std::string_view & hash, size_t offset);
++};
++
++
++template <typename SeenT>
+ class RefScanSink : public Sink
+ {
+     StringSet hashes;
+-    StringSet seen;
++    std::unique_ptr<HashBloomFilter<3>> bloom;
++    SeenT seen;
+ 
+     std::string tail;
+ 
+ public:
++    size_t offset = 0; // TODO: private
+ 
+     RefScanSink(StringSet && hashes) : hashes(hashes)
+     { }
+ 
+-    StringSet & getResult()
++    SeenT & getResult()
+     { return seen; }
+ 
+     void operator () (std::string_view data) override;
++
++    /* Clears the result and prepares the scanner to process a new file (looking for the same references). */
++    void reset()
++    { seen.clear(); tail = ""; offset = 0; }
+ };
+ 
+-class PathRefScanSink : public RefScanSink
++class PathRefScanSink : public RefScanSink<StringSet>
+ {
+     std::map<std::string, StorePath> backMap;
+ 
+diff --git a/src/libstore/store-api.hh b/src/libstore/store-api.hh
+index 9eab4b4e5..4d6820fcc 100644
+--- a/src/libstore/store-api.hh
++++ b/src/libstore/store-api.hh
+@@ -437,6 +437,10 @@ public:
+     /* Write a NAR dump of a store path. */
+     virtual void narFromPath(const StorePath & path, Sink & sink) = 0;
+ 
++    /* Print the locations of all references within the files of a store path. */
++    virtual void showReferencesInPath(const StorePath & path, bool json, Sink & sink)
++    { unsupported("registerDrvOutput"); }
++
+     /* For each path, if it's a derivation, build it.  Building a
+        derivation means ensuring that the output paths are valid.  If
+        they are already valid, this is a no-op.  Otherwise, validity
+diff --git a/src/libstore/tests/references.cc b/src/libstore/tests/references.cc
+index d91d1cedd..f9b95c735 100644
+--- a/src/libstore/tests/references.cc
++++ b/src/libstore/tests/references.cc
+@@ -10,21 +10,35 @@ TEST(references, scan)
+     std::string hash2 = "zc842j0rz61mjsp3h3wp5ly71ak6qgdn";
+ 
+     {
+-        RefScanSink scanner(StringSet{hash1});
++        RefScanSink<StringSet> scanner(StringSet{hash1});
+         auto s = "foobar";
+         scanner(s);
+         ASSERT_EQ(scanner.getResult(), StringSet{});
+     }
+ 
+     {
+-        RefScanSink scanner(StringSet{hash1});
++        RefScanSink<StringSet> scanner(StringSet{hash1});
+         auto s = "foobar" + hash1 + "xyzzy";
+         scanner(s);
+         ASSERT_EQ(scanner.getResult(), StringSet{hash1});
+     }
+ 
+     {
+-        RefScanSink scanner(StringSet{hash1, hash2});
++        RefScanSink<StringSet> scanner(StringSet{hash1, hash2});
++        auto s = "foobar" + hash1 + "xyzzy";
++        scanner(s);
++        ASSERT_EQ(scanner.getResult(), StringSet{hash1});
++    }
++
++    {
++        RefScanSink<StringSet> scanner(StringSet{hash1});
++        auto s = "foobar" + hash1 + "xyzzy" + hash2;
++        scanner(s);
++        ASSERT_EQ(scanner.getResult(), StringSet{hash1});
++    }
++
++    {
++        RefScanSink<StringSet> scanner(StringSet{hash1, hash2});
+         auto s = "foobar" + hash1 + "xyzzy" + hash2;
+         scanner(((std::string_view) s).substr(0, 10));
+         scanner(((std::string_view) s).substr(10, 5));
+@@ -34,12 +48,27 @@ TEST(references, scan)
+     }
+ 
+     {
+-        RefScanSink scanner(StringSet{hash1, hash2});
++        RefScanSink<StringSet> scanner(StringSet{hash1, hash2});
+         auto s = "foobar" + hash1 + "xyzzy" + hash2;
+         for (auto & i : s)
+             scanner(std::string(1, i));
+         ASSERT_EQ(scanner.getResult(), StringSet({hash1, hash2}));
+     }
++
++    {
++        RefScanSink<StringSet> scanner(StringSet{hash1});
++        auto s = "foobar0\0" + hash1 + "\0" + "xyzzy";
++        scanner(s);
++        ASSERT_EQ(scanner.getResult(), StringSet{hash1});
++    }
++
++    {
++        RefScanSink<StringSet> scanner(StringSet{hash1});
++        auto s = "foobar0e" + hash1 + "e" + "xyzzy";
++        scanner(s);
++        ASSERT_EQ(scanner.getResult(), StringSet{hash1});
++    }
++
+ }
+ 
+ }
+diff --git a/src/libutil/archive.cc b/src/libutil/archive.cc
+index 0e2b9d12c..a676caf24 100644
+--- a/src/libutil/archive.cc
++++ b/src/libutil/archive.cc
+@@ -38,24 +38,10 @@ static GlobalConfig::Register rArchiveSettings(&archiveSettings);
+ PathFilter defaultPathFilter = [](const Path &) { return true; };
+ 
+ 
+-static void dumpContents(const Path & path, off_t size,
+-    Sink & sink)
++static void dumpContents(const Path & path, off_t size, Sink & sink)
+ {
+     sink << "contents" << size;
+-
+-    AutoCloseFD fd = open(path.c_str(), O_RDONLY | O_CLOEXEC);
+-    if (!fd) throw SysError("opening file '%1%'", path);
+-
+-    std::vector<char> buf(65536);
+-    size_t left = size;
+-
+-    while (left > 0) {
+-        auto n = std::min(left, buf.size());
+-        readFull(fd.get(), buf.data(), n);
+-        left -= n;
+-        sink({buf.data(), n});
+-    }
+-
++    readFile(path, sink, size);
+     writePadding(size, sink);
+ }
+ 
+diff --git a/src/libutil/args.hh b/src/libutil/args.hh
+index 84866f12b..dedd3af04 100644
+--- a/src/libutil/args.hh
++++ b/src/libutil/args.hh
+@@ -89,7 +89,7 @@ protected:
+         template<class I>
+         Handler(I * dest)
+             : fun([=](std::vector<std::string> ss) {
+-                *dest = string2IntWithUnitPrefix<I>(ss[0]);
++                *dest = string2IntWithUnitSuffix<I>(ss[0]);
+               })
+             , arity(1)
+         { }
+@@ -97,7 +97,7 @@ protected:
+         template<class I>
+         Handler(std::optional<I> * dest)
+             : fun([=](std::vector<std::string> ss) {
+-                *dest = string2IntWithUnitPrefix<I>(ss[0]);
++                *dest = string2IntWithUnitSuffix<I>(ss[0]);
+             })
+             , arity(1)
+         { }
+diff --git a/src/libutil/serialise.hh b/src/libutil/serialise.hh
+index 7da5b07fd..73b6d9f54 100644
+--- a/src/libutil/serialise.hh
++++ b/src/libutil/serialise.hh
+@@ -185,6 +185,19 @@ struct TeeSink : Sink
+     }
+ };
+ 
++/* A sink that writes all incoming data to two other sinks. */
++struct SuperTeeSink : Sink
++{
++    Sink & sink1, & sink2, & sink3;
++    SuperTeeSink(Sink & sink1, Sink & sink2, Sink & sink3) : sink1(sink1), sink2(sink2), sink3(sink3) { }
++    virtual void operator () (std::string_view data)
++    {
++        sink1(data);
++        sink2(data);
++        sink3(data);
++    }
++};
++
+ 
+ /* Adapter class of a Source that saves all data read to a sink. */
+ struct TeeSource : Source
+diff --git a/src/libutil/util.cc b/src/libutil/util.cc
+index 993dc1cb6..f7977518e 100644
+--- a/src/libutil/util.cc
++++ b/src/libutil/util.cc
+@@ -352,6 +352,36 @@ void readFile(const Path & path, Sink & sink)
+     drainFD(fd.get(), sink);
+ }
+ 
++void readFile(const Path & path, Sink & sink, off_t size)
++{
++    readFile(path, sink, 0, size);
++}
++
++void readFile(const Path & path, Sink & sink, off_t offset, off_t size)
++{
++    AutoCloseFD fd = open(path.c_str(), O_RDONLY | O_CLOEXEC);
++    if (!fd)
++        throw SysError("opening file '%1%'", path);
++
++    if (offset > 0 && lseek(fd.get(), offset, SEEK_SET) != (off_t)offset) { throw SysError("seeking file '%1%' to %2%", path, offset); }
++
++    readFile(fd.get(), sink, size);
++}
++
++void readFile(int fd, Sink & sink, off_t size)
++{
++    std::vector<char> buf(65536);
++    size_t left = size;
++
++    while (left > 0) {
++        checkInterrupt();
++        auto n = std::min(left, buf.size());
++        readFull(fd, buf.data(), n);
++        left -= n;
++        sink({buf.data(), n});
++    }
++}
++
+ 
+ void writeFile(const Path & path, std::string_view s, mode_t mode, bool sync)
+ {
+diff --git a/src/libutil/util.hh b/src/libutil/util.hh
+index 9b149de80..d3084692b 100644
+--- a/src/libutil/util.hh
++++ b/src/libutil/util.hh
+@@ -109,10 +109,18 @@ DirEntries readDirectory(const Path & path);
+ 
+ unsigned char getFileType(const Path & path);
+ 
+-/* Read the contents of a file into a string. */
++/* Read the contents of a file descriptor into a string. */
+ std::string readFile(int fd);
++/* Read the contents of a file into a string. */
+ std::string readFile(const Path & path);
++/* Read the contents of a file into a sink. */
+ void readFile(const Path & path, Sink & sink);
++/* Read exactly the first size bytes of a file into a sink. */
++void readFile(const Path & path, Sink & sink, off_t size);
++/* Starting at offset, read exactly the next size bytes of a file into a sink. */
++void readFile(const Path & path, Sink & sink, off_t offset, off_t size);
++/* Read exactly the next size bytes of a file descriptor into a sink. */
++void readFile(int fd, Sink & sink, off_t size);
+ 
+ /* Write a string to a file. */
+ void writeFile(const Path & path, std::string_view s, mode_t mode = 0666, bool sync = false);
+@@ -479,7 +487,7 @@ std::optional<N> string2Int(const std::string_view s)
+ /* Like string2Int(), but support an optional suffix 'K', 'M', 'G' or
+    'T' denoting a binary unit prefix. */
+ template<class N>
+-N string2IntWithUnitPrefix(std::string_view s)
++N string2IntWithUnitSuffix(std::string_view s)
+ {
+     N multiplier = 1;
+     if (!s.empty()) {
+diff --git a/src/nix/find-references.cc b/src/nix/find-references.cc
+new file mode 100644
+index 000000000..657ac4f9b
+--- /dev/null
++++ b/src/nix/find-references.cc
+@@ -0,0 +1,47 @@
++#include "command.hh"
++#include "store-api.hh"
++#include "archive.hh"
++#include "common-args.hh"
++
++#include <nlohmann/json.hpp>
++
++using namespace nix;
++
++struct CmdFindReferences : StorePathsCommand, MixJSON
++{
++    std::string description() override
++    {
++        return "recursively finds retained references to other outputs";
++    }
++
++    std::string doc() override
++    {
++        return
++          "TODO" //#include "store-find-references.md"
++          ;
++    }
++
++    void run(ref<Store> store, std::vector<StorePath> && paths) override
++    {
++        FdSink sink(STDOUT_FILENO);
++
++        if (json) { sink("{"); } // This JSON structure is pretty simple, but can get quite big, so we manually stream it to the sink.
++        bool wrote = false;
++        for (auto & path : paths) {
++            if (json) {
++                if (wrote) sink(","); wrote = true; sink(nlohmann::json(path.to_string()).dump()); sink(":");
++            } else {
++                sink(path.to_string()); sink("\n"); // TODO: deal with \n in path
++            }
++            store->showReferencesInPath(path, json, sink);
++        }
++        if (json) { sink("}"); }
++
++        sink.flush();
++        // TODO: when writing to a terminal, this tends to swallow some(-times many) tailing bytes
++        //std::cerr<<"sink.bufSize="<<(sink.bufSize)<<std::endl;
++        //std::cerr<<"sink.bufPos="<<(sink.bufPos)<<std::endl;
++    }
++};
++
++static auto rFindReferences = registerCommand2<CmdFindReferences>({"store", "find-references"});
+diff --git a/src/nix/local.mk b/src/nix/local.mk
+index 0f2f016ec..c1859c5c7 100644
+--- a/src/nix/local.mk
++++ b/src/nix/local.mk
+@@ -18,7 +18,7 @@ nix_CXXFLAGS += -I src/libutil -I src/libstore -I src/libfetchers -I src/libexpr
+ 
+ nix_LIBS = libexpr libmain libfetchers libstore libutil libcmd
+ 
+-nix_LDFLAGS = -pthread $(SODIUM_LIBS) $(EDITLINE_LIBS) $(BOOST_LDFLAGS) $(LOWDOWN_LIBS)
++nix_LDFLAGS = -pthread $(SODIUM_LIBS) $(EDITLINE_LIBS) $(BOOST_LDFLAGS) $(LOWDOWN_LIBS) $(MINIBSDIFF_LIBS)
+ 
+ $(foreach name, \
+   nix-build nix-channel nix-collect-garbage nix-copy-closure nix-daemon nix-env nix-hash nix-instantiate nix-prefetch-url nix-shell nix-store, \
+diff --git a/src/nix/store-send.cc b/src/nix/store-send.cc
+new file mode 100644
+index 000000000..f366f7dfb
+--- /dev/null
++++ b/src/nix/store-send.cc
+@@ -0,0 +1,737 @@
++#include "archive.hh"
++#include "command.hh"
++#include "common-args.hh"
++#include "hash.hh"
++#include "references.hh"
++#include "store-api.hh"
++
++#include <regex>
++#include <bsdiff.h>
++#include <nlohmann/json.hpp>
++
++#define log(expr) std::cerr<<#expr"="<<(expr)<<std::endl
++
++using namespace nix;
++
++static const size_t refLength = 32; /* characters */
++
++struct HashRef {
++private:
++    std::shared_ptr<std::array<uint8_t, sha256HashSize>> _data;
++    bool _dense;
++public:
++    HashRef() = delete;
++    HashRef(const Hash & hash) : _data(new std::array<uint8_t, sha256HashSize>), _dense(true) {
++        std::memcpy(_data.get()->data(), hash.hash, sha256HashSize);
++    }
++    HashRef(const std::string_view str) : _data(new std::array<uint8_t, sha256HashSize>), _dense(false) {
++        std::memcpy(_data.get()->data(), str.data(), sha256HashSize); static_assert(refLength <= sha256HashSize);
++    }
++    const bool & dense() const { return _dense; }
++    const auto & data() const { return _data; }
++
++    bool operator == (const HashRef & other) const {
++        return _data == other._data || *_data == *other._data;
++    }
++    bool operator != (const HashRef & other) const {
++        return !(*this == other);
++    }
++    bool operator < (const HashRef & other) const {
++        return _data != other._data && *_data < *other._data;
++    }
++
++    std::string toHex() const {
++        auto ret = std::string(sha256HashSize * 2, '\0');
++        for (unsigned int i = 0; i < sha256HashSize; i++) {
++            uint8_t h = (*_data)[i] >> 4;
++            uint8_t l = (*_data)[i] & 0b1111;
++            ret.data()[i*2  ] = h < 0xa ? h+48 : h+97-0xa;
++            ret.data()[i*2+1] = l < 0xa ? l+48 : l+97-0xa;
++        } return ret;
++    }
++};
++template<> struct std::hash<HashRef> { size_t operator()(HashRef const& hash) const noexcept {
++    if (hash.dense()) {
++        return *(reinterpret_cast<const size_t*>(hash.data().get()->data()));
++    } else {
++        size_t ret = 0; for (uint8_t i = 0; i < sizeof(size_t); ++i) {
++            ret <<= 4; ret |= hash.data().get()->at(i) & 0b1111;
++        } return ret;
++    } }
++};
++
++struct DataChunk {
++private:
++    HashRef _hash;
++    //HashRef _file;
++    size_t _offset;
++    size_t _size;
++public:
++    DataChunk() = delete;
++    DataChunk(const HashRef & hash, size_t offset, size_t size)
++    : _hash(hash), /* _file(file), */ _offset(offset), _size(size) { }
++    const HashRef & hash() const { return _hash; };
++    //const HashRef & file() const { return _file; };
++    size_t offset() const { return _offset; };
++    size_t size() const { return _size; };
++};
++struct RefChunk {
++private:
++    HashRef _ref;
++public:
++    RefChunk() = delete;
++    RefChunk(const std::string_view & str) : _ref(str) { }
++    RefChunk(const std::string & str) : _ref(str) { }
++    size_t size() const { return refLength; };
++    const std::string_view ref() const { return std::string_view((char *)_ref.data().get()->data(), refLength); static_assert(refLength <= sha256HashSize); }
++    //std::string ref() { return std::string((char *)_ref.data().get()->data(), refLength); static_assert(refLength <= sha256HashSize); }
++};
++typedef DataChunk ChunkLocation;
++typedef std::variant<DataChunk, RefChunk> Chunk;
++
++
++std::function<nix::Hash()> narHashFile(HashSink & sink, struct stat st) {
++    sink << narVersionMagic1;
++    sink << "(" << "type" << "regular";
++    if (st.st_mode & S_IXUSR)
++        sink << "executable" << "";
++    sink << "contents" << st.st_size;
++    return [&sink, st]() {
++        writePadding(st.st_size, sink);
++        sink << ")";
++        return sink.finish().first;
++    };
++}
++nix::Hash narHashLink(const std::string & data) {
++    HashSink sink(htSHA256);
++    sink << narVersionMagic1 << "(" << "type" << "symlink" << "target" << data << ")";
++    return sink.finish().first;
++}
++
++struct BufferSink : virtual Sink {
++    size_t _size, offset;
++    std::unique_ptr<uint8_t[]> buffer;
++
++    BufferSink(size_t size)
++    : _size(size), offset(0), buffer(new uint8_t[size]) { }
++
++    void operator () (std::string_view data) {
++        assert(data.size() <= _size - offset);
++        memcpy(buffer.get() + offset, data.data(), data.size()); offset += data.size();
++    };
++
++    uint8_t * get() { return buffer.get(); }
++    size_t size() { return _size; }
++};
++
++struct BuffersSink : virtual Sink {
++    size_t chunkSize, offset;
++    std::vector<std::unique_ptr<uint8_t[]>> buffers;
++
++    BuffersSink(size_t chunkSize = 64 * 1024)
++    : chunkSize(chunkSize), offset(0), buffers() { }
++
++    void operator () (std::string_view data) {
++        if (offset % chunkSize == 0) { buffers.emplace_back(new uint8_t[chunkSize]); }
++        auto left = chunkSize - offset % chunkSize; auto written = std::min(data.size(), left);
++        memcpy(buffers.back().get() + offset % chunkSize, data.data(), written); offset += written;
++        if (left < data.size()) { operator()(data.substr(left)); }
++    };
++
++    uint8_t * get() {
++        assert(buffers.size());
++        if (buffers.size() > 1) {
++            auto buffer = std::unique_ptr<uint8_t[]>(new uint8_t[offset]);
++            for (size_t i = 0, s = buffers.size() - 1; i < s; ++ i) {
++                memcpy(buffer.get() + i * chunkSize, buffers[i].get(), chunkSize);
++            } memcpy(buffer.get() + (buffers.size() - 1) * chunkSize, buffers.back().get(), offset % chunkSize > 0 ? offset % chunkSize : chunkSize);
++            buffers.clear(); buffers.push_back(std::move(buffer)); chunkSize = offset;
++        }
++        return buffers[0].get();
++    }
++
++    size_t size() { return offset; }
++};
++
++auto deductComponentMapping(ref<Store> store, const nix::StorePath & before, const nix::StorePath & after) {
++
++    auto pnameOf = [](std::string name) { // this is similar to DrvName(name).name
++        std::smatch match; if (std::regex_search(name, match, std::regex("-\\d"))) {
++            auto pname = name.substr(0, match.position(0));
++            auto suffix = name.substr(match.position(0) + 1); if (std::regex_search(suffix, match, std::regex("-[a-z]{3,}$"))) {
++                return pname +':'+ suffix.substr(match.position(0) + 1);
++            } else {
++                return pname;
++            }
++        } else {
++            return name;
++        }
++    };
++
++    std::unordered_set<StorePath> done; std::unordered_map<StorePath, StorePath> mapping;
++    std::function<void (const nix::StorePath & before, const nix::StorePath & after)> walk = [&](const nix::StorePath & before, const nix::StorePath & after) {
++        if (done.count(after) > 0) { return; } done.emplace(after);
++        auto beforeDeps = store->queryPathInfo(before)->references;
++        auto afterDeps = store->queryPathInfo(after)->references;
++    //  log(after.to_string());
++        std::multimap<std::string_view, StorePath> byName; for (const auto & b : beforeDeps) { byName.emplace(b.name(), b); /* log(b.name()); */ }
++        size_t missing = 0;
++        for (const auto & a : afterDeps) {
++            if (mapping.count(a) > 0) { continue; } // TODO: Due to package variants (changing as dependency of one package between versions), other packages may still have a different opinion on this. Could do a majority voting.
++        //  log(a.name());
++            auto count = byName.count(a.name());
++            if (count != 1) {
++            //  std::cerr << "Found " << count << " dependencies " << a.name() << " of " << after.to_string() << std::endl;
++                if (count == 0) { ++missing; } continue;
++            }
++            auto b = byName.find(a.name())->second;
++        //  std::cerr << "Found match " << b.to_string() << " <- " << a.to_string() << std::endl;
++            mapping.emplace(a, b);
++        }
++        if (missing > 0) {
++        //  log("missing");
++            std::multimap<std::string, StorePath> byPName; for (const auto & b : beforeDeps) { auto b_pname = pnameOf(std::string(b.name())); byPName.emplace(b_pname, b); /* log(b_pname); */ }
++            for (const auto & a : afterDeps) {
++                if (mapping.count(a) > 0) { continue; }
++                auto a_pname = pnameOf(std::string(a.name()));
++            //  log(a.name()); log(a_pname);
++                auto count = byPName.count(a_pname);
++                if (count != 1) {
++                //  std::cerr << "Found " << count << " dependencies " << a_pname << " of " << after.to_string() << std::endl;
++                    continue;
++                }
++                auto b = byPName.find(a_pname)->second;
++            //  std::cerr << "Found match " << a.to_string() << " <- " << b.to_string() << std::endl;
++                mapping.emplace(a, b);
++            }
++        }
++        for (const auto & a : afterDeps) {
++            if (a == after) { continue; }
++            if (const auto & it = mapping.find(a); it != mapping.end()) {
++                walk(it->second, a);
++            } /* else {
++                done.emplace(a);
++            } */
++        }
++    };
++    walk(before, after);
++    return mapping;
++}
++
++bool isPathChar(char c) {
++    //if (((0b1000'0000 & c) != 0) || ((0b0110'0000 & c) == 0)) { return false; }
++    if (c >= 'a' && c <= 'z') { return true; } // a-z
++    if (c >= '+' && c <= '9') { return true; } // +,-./0-9
++    if (c >= '@' && c <= 'Z') { return true; } // @A-Z
++    return false;
++}
++
++template<typename InT, typename OutT>
++std::vector<OutT> mapVector(const std::vector<InT> & in, std::function<OutT(const InT &)> transform) {
++    std::vector<OutT> out; out.reserve(in.size());
++    std::transform(in.begin(), in.end(), std::back_inserter(out), transform);
++    //auto out_i = out.begin(); for (const InT & elem : in) { *(out_i++) = transform(elem); }
++    return out;
++}
++template<typename VecT>
++std::vector<VecT> sortVector(std::vector<VecT> vec) {
++    std::sort(vec.begin(), vec.end()); return vec;
++}
++
++std::string toHexString(size_t num) {
++    return (format("%|1$x|") % num).str(); // (this is probably not the most efficient)
++}
++
++StorePathSet complement(const StorePathSet & keep, const StorePathSet & remove) {
++    StorePathSet result; std::set_difference(keep.begin(), keep.end(), remove.begin(), remove.end(), std::inserter(result, result.begin()));
++    return result;
++}
++
++struct CmdStoreSend : SourceExprCommand, MixJSON
++{
++    std::string _before, _after;
++    bool jsonScript = false;
++    bool dryRun = false;
++    bool inlineData = false;
++    bool appendData = false;
++    bool useBSdiff = false;
++    bool bsdiffNars = false;
++    bool recursive = true;
++    bool scanRefs = true;
++    bool wholeFiles = true;
++    bool reuseTransferred = true;
++    bool skipPathSuffix = false;
++    size_t maxChunkSize = 0; // 0x1000
++
++    FdSink outputSink = { STDOUT_FILENO };
++    FdSink debugSink = { STDERR_FILENO };
++    size_t scriptSize = 0;
++
++    CmdStoreSend()
++    {
++        expectArg("before", &_before);
++        expectArg("after", &_after);
++        addFlag({
++            .longName = "json-script",
++            .description = "Add a JSON representation of the update script to the *--json* output (which this implies).",
++            .handler = {&jsonScript, true},
++        });
++        if (jsonScript) { json = true; }
++        addFlag({
++            .longName = "dry-run",
++            .description = "Do not actually output the script (but still report statistics).",
++            .handler = {&dryRun, true},
++        });
++        addFlag({
++            .longName = "inline-data",
++            .description = "Include non-reusable chunks inline in the update script.",
++            .handler = {&inlineData, true},
++        });
++        addFlag({
++            .longName = "append-data",
++            .description = "Include non-reusable chunks at the end of the update script.",
++            .handler = {&appendData, true},
++        });
++        addFlag({
++            .longName = "use-bsdiff",
++            .description = "Instead of including non-matched blocks verbatim, try to build and include a bsdiff patch.",
++            .handler = {&useBSdiff, true},
++        });
++        addFlag({
++            .longName = "bsdiff-nars",
++            .description = "Use bsdiff on whole (nar-serialized) components, where possible. This makes all other compos non-applicable for those components.",
++            .handler = {&bsdiffNars, true},
++        });
++        addFlag({
++            .longName = "no-recursive",
++            .description = "Scan only the store paths listed, without resolving their closures, and output only for the file or directory that 'before' points at.",
++            .handler = {&recursive, false},
++        });
++        addFlag({
++            .longName = "no-scan-refs",
++            .description = "Do not actually split data chunks around hash references.",
++            .handler = {&scanRefs, false},
++        });
++        addFlag({
++            .longName = "no-whole-files",
++            .description = "Do not reuse identical files as a whole.",
++            .handler = {&wholeFiles, false},
++        });
++        addFlag({
++            .longName = "no-reuse-transferred",
++            .description = "Do not reuse files or chunks already transferred.",
++            .handler = {&reuseTransferred, false},
++        });
++        addFlag({
++            .longName = "skip-path-suffix",
++            .description = "After finding a reference, exclude the following data bytes that are common path characters from the next proper data chunk.",
++            .handler = {&skipPathSuffix, true},
++        });
++        addFlag({
++            .longName = "max-chunk-size",
++            .description = "Just before a data chunk would become larger than *n*, start a new chunk.",
++            .labels = {"n"},
++            .handler = {&maxChunkSize},
++        });
++    }
++
++    std::string description() override
++    {
++        return "create a compact update stream that can create one closure set of store paths based on another";
++    }
++
++    std::string doc() override
++    {
++        return
++          "TODO"
++          ;
++    }
++
++    void slice_n_dice(
++        ref<Store> store,
++        std::map<Path, HashRef> & path2file,
++        std::unordered_multimap<HashRef, Path> & file2paths,
++        std::unordered_map<HashRef, std::vector<Chunk>> & file2chunks,
++        std::unordered_multimap<HashRef, ChunkLocation> & chunk2file,
++        StorePathSet paths
++    ) {
++
++        for (const auto & path : paths) {
++            auto info = store->queryPathInfo(path);
++            StringSet hashes; for (auto & i : info->references) { hashes.insert(std::string(i.hashPart())); }
++            auto scanner = RefScanSink<std::vector<std::pair<size_t, std::string>>>(std::move(hashes));
++
++            std::function<void(const Path & path)> scan = [&](const Path & path) {
++                checkInterrupt();
++                auto st = lstat(path);
++                if (S_ISLNK(st.st_mode)) {
++                    // There is not really a point to scanning the contents of symlinks.
++                    auto hash = HashRef(narHashLink(readLink(path)));
++                    path2file.emplace(path, hash);
++                    file2paths.emplace(hash, path);
++                } else if (S_ISREG(st.st_mode)) {
++
++                //  log(path);
++
++                    auto hashSink = HashSink(htSHA256); auto mkHash = narHashFile(hashSink, st);
++
++                    auto currentChunk = std::unique_ptr<HashSink>(new HashSink(htSHA256));
++                    std::vector<Chunk> chunks; size_t dataChunkStart = 0, pathChunkSize = 0; bool eatPath = false;
++                    std::string tail; size_t skip = 0, offset = 0, lastChunks = 0;
++                    auto hashData = [&](std::string_view data) {
++                        if (skipPathSuffix) { size_t ate = 0; while (ate < data.size()) {
++                            if (!eatPath) { break; }
++                            if (!isPathChar(data[ate++])) {
++                                eatPath = false; if (auto length = offset + ate - dataChunkStart; length > 0) {
++                                    (*currentChunk)(data.substr(0, ate)); data = data.substr(ate); offset += ate;
++                                    chunks.push_back(DataChunk(currentChunk->finish().first, dataChunkStart, length));
++                                    currentChunk.reset(new HashSink(htSHA256)); dataChunkStart += length;
++                                    pathChunkSize = maxChunkSize ? length % maxChunkSize : 0;
++                                }
++                            }
++                            //if (eatPath) { std::cerr<<(data[ate-1]); } else { std::cerr<<std::endl; }
++                        } }
++                        if (maxChunkSize) { while (true) {
++                            auto left = maxChunkSize - (offset - dataChunkStart) - pathChunkSize; if (left >= data.size()) { break; }
++                            (*currentChunk)(data.substr(0, left)); data = data.substr(left); offset += left;
++                            chunks.push_back(DataChunk(currentChunk->finish().first, dataChunkStart, maxChunkSize));
++                            currentChunk.reset(new HashSink(htSHA256)); dataChunkStart += maxChunkSize;
++                            pathChunkSize = 0;
++                        } }
++                        (*currentChunk)(data); offset += data.size();
++                    };
++                    std::function<void (std::string_view data)> hashBlob = [&](std::string_view data) { // Gets fed the chunks that have just been scanned for (completed) references.
++                        if (tail.size() + data.size() < refLength-1) { tail += data; return; } // Any of the last 31 bytes may still be the start of a reference, though, and they haven't been scanned yet, so ensure to process them later.
++                        if (data.size() < refLength-1) { auto tmp = tail + data; tail = ""; hashBlob(tmp); return; } // Move bytes from old tail to data, so there is enough to cut off a new tail.
++                        for (auto & data : std::array<std::string_view, 2>{{ tail, data.substr(0, data.size() - (refLength-1)) }}) { // Reserve 31 bytes for the new tail (ensuring that all previous bytes have been scanned for the start of a reference), and then process the old tail and the data minus the new tail (concatenating them would be slow, and data itself may have any size anyway).
++                        //  log(data.size());
++                            while (true) {
++                                if (data.size() <= skip) { offset += data.size(); skip -= data.size(); break; }
++                                if (skip > 0) { data = data.substr(skip); offset += skip; skip = 0; } assert(data.size() > 0);
++                                if (!(scanner.getResult().size() > lastChunks)) { hashData(data); break; }
++                            //  log(scanner.getResult().at(lastChunks).second);
++                                auto end = scanner.getResult().at(lastChunks).first;
++                            //  log(end); log(offset);
++                                auto consumed = std::min(data.size(), end - offset);
++                            //  log(data.substr(0, consumed));
++                                hashData(data.substr(0, consumed)); data = data.substr(consumed);
++                            //  log(consumed);
++                                if (offset < end) { assert(data.size() == 0); break; }
++                                chunks.push_back(DataChunk(currentChunk->finish().first, dataChunkStart, offset - dataChunkStart));
++                                currentChunk.reset(new HashSink(htSHA256)); dataChunkStart = end + refLength;
++                                chunks.push_back(RefChunk(scanner.getResult().at(lastChunks).second)); ++lastChunks;
++                            //  log(HashRef(chunkHashes.back()).toHex());
++                                skip = refLength; eatPath = true;
++                            }
++                        }
++                        if (skip == refLength) { tail = ""; offset += refLength-1;skip -= refLength-1; } // (not sure this is possible)
++                        else { tail = data.substr(data.size() - (refLength-1 - skip)); offset += skip; skip = 0; }
++                    //  log(tail.size());
++                    };
++                    auto chunkSink = LambdaSink(scanRefs ? hashBlob : hashData);
++
++                    { auto tee = SuperTeeSink(scanner, hashSink, chunkSink); readFile(path, tee, st.st_size); }
++
++                    assert(tail.size() <= refLength-1); hashData(tail); assert(offset == (size_t)st.st_size);
++                    if (dataChunkStart < offset) { chunks.push_back(DataChunk(currentChunk->finish().first, dataChunkStart, st.st_size - dataChunkStart)); }
++                //  log(chunkHashes.back().to_string(nix::Base::Base16, false));
++
++                    auto hash = HashRef(mkHash());
++                    path2file.emplace(path, hash); file2paths.emplace(hash, path);
++                    for (auto & chunk : chunks) { if (const auto data = std::get_if<DataChunk>(&chunk)) {
++                        chunk2file.emplace(data->hash(), ChunkLocation(hash, data->offset(), data->size()));
++                    } }
++                    file2chunks.emplace(hash, chunks); // could skip the above if file2chunks[hash] exists
++
++                    scanner.reset();
++
++                } else if (S_ISDIR(st.st_mode)) {
++                    for (auto & entry : readDirectory(path)) {
++                        scan(path + "/" + entry.name);
++                    }
++                }
++            };
++            scan(store->storeDir +"/"+ std::string(path.to_string()));
++        }
++    }
++
++    static constexpr auto seperator = " ", terminator = "\n";
++    template<uint8_t argc>
++    void writeInstruction(size_t indent, char opcode, std::array<std::string_view, argc> args, bool open = false, bool comma = false) {
++        if (jsonScript) {
++            if (comma) { debugSink("\n,"); }
++            for (size_t i = 0; i < indent; ++i) { debugSink("\t"); } debugSink("[\""); debugSink(std::string_view(&opcode, 1)); debugSink("\"");
++            for (uint8_t i = 0; i < argc; i++) {
++                debugSink(","); debugSink(nlohmann::json(args[i]).dump());
++            } debugSink(open ? "," : "]");
++        }
++        if (!dryRun) {
++            outputSink(std::string_view(&opcode, 1)); for (uint8_t i = 0; i < argc; i++) {
++                outputSink(seperator); outputSink(args[i]);
++            } outputSink(terminator);
++        }
++        scriptSize += 2 + args.size(); for (uint8_t i = 0; i < argc; i++) { scriptSize += args[i].size(); }
++        //sink.flush();
++    }
++
++    void run(ref<Store> store) override
++    {
++        auto before = Installable::toStorePath(getEvalStore(), store, Realise::Outputs, operateOn, parseInstallable(store, _before));
++        StorePathSet beforeComps; if (recursive) { store->computeFSClosure({before}, beforeComps); } else { beforeComps.emplace(before); }
++        auto after = Installable::toStorePath(getEvalStore(), store, Realise::Outputs, operateOn, parseInstallable(store, _after));
++        StorePathSet afterComps; if (recursive) { store->computeFSClosure({after}, afterComps); } else { afterComps.emplace(after); }
++
++        auto createComps = complement(afterComps, beforeComps); // components we create
++        auto pruneComps = complement(beforeComps, afterComps); // components we no longer need
++        auto keepComps = complement(beforeComps, pruneComps); // components we keep
++
++        std::map<Path, HashRef>  need_path2file; // createComps
++        std::map<Path, HashRef>  have_path2file;
++        std::unordered_multimap<HashRef, Path>  need_file2paths;
++        std::unordered_multimap<HashRef, Path>  have_file2paths; // pruneComps + keepComps
++        std::unordered_map<HashRef, std::vector<Chunk>>  need_file2chunks; // createComps
++        std::unordered_map<HashRef, std::vector<Chunk>>  have_file2chunks;
++        std::unordered_multimap<HashRef, ChunkLocation> dummy_chunk2file;
++        std::unordered_multimap<HashRef, ChunkLocation>  have_chunk2file; // pruneComps + keepComps
++        // TODO: instead of the dummy maps, pass nullptr or use optionals
++
++        slice_n_dice(store,  need_path2file,  need_file2paths,  need_file2chunks, dummy_chunk2file, createComps);
++        slice_n_dice(store,  have_path2file,  have_file2paths,  have_file2chunks,  have_chunk2file, pruneComps);
++        slice_n_dice(store,  have_path2file,  have_file2paths,  have_file2chunks,  have_chunk2file, keepComps);
++
++        size_t dir_c = 0, exec_c = 0, reg_c = 0, sym_c = 0, link_c = 0, slice_c = 0, copy_c = 0, patch_c = 0, ref_c = 0;
++        size_t dir_s = 0, exec_s = 0, reg_s = 0, sym_s = 0, link_s = 0, slice_s = 0, copy_s = 0, patch_s = 0, ref_s = 0;
++
++        auto compMap = deductComponentMapping(store, before, after);
++        /* for (const auto & a : afterComps) {
++            std::string b_str = "(none)"; if (const auto & it = compMap.find(a); it != compMap.end()) { b_str = it->second.to_string(); }
++            if (b_str == "(none)") std::cerr << a.to_string() << " <- " << b_str << std::endl;
++        } */
++
++        if (jsonScript) { debugSink("{\"script\":\n["); }
++        else if (json) { debugSink("{"); }
++        std::vector<ChunkLocation> writeChunks;
++
++        std::function<void(const std::string_view & name, const Path & path, const Path & before, size_t indent, bool noop)> walk = [&](const std::string_view & name, const Path & path, const Path & before, size_t indent, bool noop) {
++            checkInterrupt();
++            auto st = lstat(path); // (could derive the file type from the maps)
++            if (S_ISLNK(st.st_mode) || S_ISREG(st.st_mode)) {
++                if (!S_ISLNK(st.st_mode)) { if (st.st_mode & S_IXUSR) {
++                    exec_s += st.st_size; ++exec_c;
++                } else {
++                    reg_s += st.st_size; ++reg_c;
++                } }
++                if (noop) {
++                    if (S_ISLNK(st.st_mode)) { sym_s += readLink(path).size(); ++sym_c; }
++                    return;
++                }
++
++                auto & hash = need_path2file.at(path);
++                HashRef * beforeHash = nullptr; if (before != "") { if (auto it = have_path2file.find(before); it != have_path2file.end()) { beforeHash = &it->second; } }
++
++                if (wholeFiles) { if (beforeHash && hash == *beforeHash) {
++                    writeInstruction<2>(indent, 'L', {{ name, before }});
++                    link_s += st.st_size; ++link_c;
++                    if (S_ISLNK(st.st_mode)) { sym_s += readLink(path).size(); ++sym_c; }
++                    return; // (already knew this file)
++                } }
++
++                if (wholeFiles) { if (auto it = have_file2paths.find(hash); it != have_file2paths.end()) {
++                    writeInstruction<2>(indent, 'l', {{ name, it->second }});
++                    link_s += st.st_size; ++link_c;
++                    if (S_ISLNK(st.st_mode)) { sym_s += readLink(path).size(); ++sym_c; }
++                    return; // (already knew this file)
++                } }
++
++                if (S_ISLNK(st.st_mode)) {
++                    auto target = readLink(path);
++                    writeInstruction<2>(indent, 's', {{ name, target }});
++                    sym_s += target.size(); ++sym_c;
++                    if (reuseTransferred) { have_file2paths.emplace(hash, path); }
++                    return; // (now know this file)
++                }
++
++                AutoCloseFD fd; bool comma = false;
++                std::optional<std::pair<std::string, size_t>> prevSliceFrom; size_t prevSliceTo;
++                std::optional<size_t> prevCopyFrom; size_t prevCopyTo;
++                auto commitChunk = [&]() {
++                    if (prevCopyFrom.has_value()) {
++                        auto offset = prevCopyFrom.value(), size = prevCopyTo - offset;
++                        if (inlineData) {
++                            writeInstruction<1>(indent + 1, 'V', {{ toHexString(size) }}, false, comma); comma = true;
++                            if (!fd) { if (!(fd = open(path.c_str(), O_RDONLY | O_CLOEXEC))) { throw SysError("opening file '%1%'", path); } }
++                            if (lseek(fd.get(), offset, SEEK_SET) != (off_t)offset) { throw SysError("seeking file '%1%' to %2%", path, offset); }
++                            readFile(fd.get(), outputSink, size);
++                        } else {
++                            writeInstruction<1>(indent + 1, 'v', {{ toHexString(size) }}, false, comma); comma = true;
++                            if (appendData) writeChunks.push_back({ hash, offset, size }); // (as long as these are written in order, they don't need any (size/name) metadata, and even the hash with the 'v' instruction is unnecessary)
++                        }
++                        prevCopyFrom.reset();
++                    }
++                    if (prevSliceFrom.has_value()) {
++                        auto & [ path, offset ] = prevSliceFrom.value(); auto size = prevSliceTo - offset;
++                        writeInstruction<3>(indent + 1, before.size() && path == std::string_view(before).substr(store->storeDir.size() + 1) ? 'C' : 'c', {{ path, toHexString(offset), toHexString(size) }}, false, comma); comma = true;
++                        prevSliceFrom.reset();
++                    }
++                };
++                auto appendSlice = [&](const std::string & path, size_t offset, size_t size) {
++                    slice_s += size; ++slice_c;
++                    if (prevCopyFrom.has_value()) { commitChunk(); }
++                    if (prevSliceFrom.has_value()) {
++                        if (prevSliceFrom.value().first == path) {
++                            if (prevSliceTo == offset) { prevSliceTo += size; return; }
++                        }
++                        commitChunk();
++                    }
++                    prevSliceFrom = std::make_pair(path, offset); prevSliceTo = offset + size;
++                };
++
++                size_t bcIndex = 0; std::vector<Chunk> * beforeChunks = nullptr; if (beforeHash) { try { beforeChunks = &have_file2chunks.at(*beforeHash); } catch (const std::out_of_range& oor) { /* std::cerr<<"failed to retrieve hunks for existing file "<<before<<std::endl; */ } } // TODO: how can this ever happen?
++
++                writeInstruction<1>(indent, (st.st_mode & S_IXUSR) ? 'x' : 'f', {{ name }}, true); if (jsonScript) { debugSink("\n["); }
++                if (reuseTransferred) { have_file2paths.emplace(hash, path); } // (from here on, we start having the first chunks of this (but the receiving side will need to be aware that the currently being processed file may be referenced as source of chunks))
++                for (auto & chunk : need_file2chunks.at(hash)) { std::visit(overloaded {
++                    [&](const DataChunk & need) {
++                        assert(need.size() > 0);
++
++                        if (beforeChunks) { for (size_t offset = 0; offset < 7; ++offset) {
++                            size_t index; if (offset % 2) {
++                                index = bcIndex + offset/2;
++                            } else {
++                                if (!(bcIndex >= offset/2)) { continue; }
++                                index = bcIndex - offset/2;
++                            }
++                            if (!(index < beforeChunks->size())) { continue; }
++                            if (auto have = std::get_if<DataChunk>(&beforeChunks->at(index))) { if (have->hash() == need.hash()) {
++                                if (prevCopyFrom.has_value()) { commitChunk(); }
++                                appendSlice(before.substr(store->storeDir.size() + 1), have->offset(), have->size());
++                                return;
++                            } }
++                        } }
++
++                        if (auto it = have_chunk2file.find(need.hash()); it != have_chunk2file.end() && wholeFiles) {
++                            auto have = it->second; auto path = have_file2paths.find(have.hash())->second;
++                            appendSlice(path.substr(store->storeDir.size() + 1), have.offset(), have.size());
++                            return;
++                        }
++
++                        if (useBSdiff) { if (beforeChunks && bcIndex < beforeChunks->size()) { if (auto beforeChunk = std::get_if<DataChunk>(&beforeChunks->at(bcIndex))) { if (beforeChunk->size() * 4 > need.size()) {
++                            auto beforeData = BufferSink(beforeChunk->size()); readFile(before, beforeData, beforeChunk->offset(), beforeChunk->size());
++                            auto afterData = BufferSink(need.size()); readFile(path, afterData, need.offset(), need.size());
++                            auto maxPatchSize = bsdiff_patchsize_max(beforeChunk->size(), need.size());
++                            auto patchBuffer = std::unique_ptr<uint8_t[]>(new uint8_t[maxPatchSize]);
++                        //  log(maxPatchSize);
++                            auto patchSize = bsdiff(beforeData.get(), beforeData.size(), afterData.get(), afterData.size(), patchBuffer.get(), maxPatchSize);
++                            checkInterrupt(); // (the bsdiff call potentially took quite some time)
++                        //  log(patchSize);
++                            assert(patchSize > 0);
++                            commitChunk();
++                            writeInstruction<4>(indent + 1, 'B', {{ before, toHexString(beforeChunk->offset()), toHexString(beforeChunk->size()), toHexString(patchSize) }}, false, comma); comma = true;
++                            if (inlineData || appendData) {
++                                outputSink(std::string_view((char*)patchBuffer.get(), patchSize));
++                            }
++                            patch_s += patchSize; ++patch_c;
++                            if (reuseTransferred) { have_chunk2file.emplace(need.hash(), ChunkLocation(hash, need.offset(), need.size())); }
++                            return;
++                        } } } }
++                        //} else { log(path); log(before); log(bcIndex); log(need.size()); log(beforeChunk->size()); } } else { log(path); log(before); log("no chunks"); } } else { log(path); log(before); log(bcIndex); log(beforeChunks ? (int)beforeChunks->size() : -1); } }
++
++                        if (prevSliceFrom.has_value()) { commitChunk(); }
++                        if (!prevCopyFrom.has_value()) { prevCopyFrom = need.offset(); }
++                        prevCopyTo = need.offset() + need.size();
++                        copy_s += need.size(); ++copy_c;
++                        if (reuseTransferred) { have_chunk2file.emplace(need.hash(), ChunkLocation(hash, need.offset(), need.size())); }
++                    },
++                    [&](const RefChunk & chunk) {
++                        commitChunk();
++                        writeInstruction<1>(indent + 1, 'h', {{ chunk.ref() }}, false, comma); comma = true;
++                        ref_s += refLength; ++ref_c;
++                    },
++                }, chunk); ++bcIndex; }
++                commitChunk();
++                if (jsonScript) { debugSink("]]"); }
++
++            } else if (S_ISDIR(st.st_mode)) {
++                if (!noop) { writeInstruction<1>(indent, 'd', {{ name }}, true); if (jsonScript) { debugSink("\n["); } }
++                { bool comma = false; for (auto & name : sortVector(mapVector<DirEntry, std::string>(readDirectory(path), [](auto entry) { return entry.name; }))) {
++                    if (!noop && jsonScript && comma) { debugSink("\n,"); } comma = true;
++                    if (before != "") {
++                        walk(name, path + "/" + name, before + "/" + name, indent + 1, noop);
++                    } else {
++                        walk(name, path + "/" + name, "", indent + 1, noop);
++                    }
++                    dir_s += name.size();
++                } } ++dir_c;
++                if (noop) { return; }
++                if (jsonScript) { debugSink("]]"); scriptSize += 2; }
++                else { writeInstruction<0>(indent, 'p', {{ }}); }
++            }
++        };
++
++        if (!recursive) {
++            walk(_before, _before, "", 1, false);
++        } else
++        { bool comma = false; for (const auto & path : createComps) { // TODO: should sort cerateComps (by pname?)
++            if (jsonScript) { if (comma) { debugSink("\n,"); } scriptSize += 2; comma = true; }
++            else { writeInstruction<0>(1, 'r', {{ }}); }
++            if (const auto & it = compMap.find(path); it != compMap.end()) {
++                if (bsdiffNars) {
++                    // For a large update, something in here caused: free(): corrupted unsorted chunks
++                    //log(path.to_string());
++                    auto beforeNar = BuffersSink(); store->narFromPath(it->second, beforeNar);
++                    auto afterNar = BuffersSink(); store->narFromPath(path, afterNar);
++                    auto maxPatchSize = bsdiff_patchsize_max(beforeNar.size(), afterNar.size());
++                    auto patchBuffer = std::unique_ptr<uint8_t[]>(new uint8_t[maxPatchSize]);
++                    //log(maxPatchSize);
++                    auto patchSize = bsdiff(beforeNar.get(), beforeNar.size(), afterNar.get(), afterNar.size(), patchBuffer.get(), maxPatchSize);
++                    //size_t patchSize = 0;
++                    //log(patchSize);
++                    checkInterrupt(); // (the bsdiff call potentially took quite some time)
++                    writeInstruction<2>(1, 'N', {{ it->second.to_string(), toHexString(patchSize) }});
++                    if (inlineData || appendData) {
++                        outputSink(std::string_view((char*)patchBuffer.get(), patchSize));
++                    }
++                    patch_s += patchSize; ++patch_c;
++                    walk(path.to_string(), store->storeDir +"/"+ std::string(path.to_string()), "", 1, true);
++                } else {
++                    walk(path.to_string(), store->storeDir +"/"+ std::string(path.to_string()), store->storeDir +"/"+ std::string(it->second.to_string()), 1, false);
++                }
++            } else {
++                walk(path.to_string(), store->storeDir +"/"+ std::string(path.to_string()), "", 1, false);
++            }
++        }  for (const auto & path : pruneComps) { // TODO: should sort cerateComps (by pname?)
++            // TODO: emit a 'g' (gc) instruction
++        } }
++
++        for (const auto & need : writeChunks) {
++            auto path = need_file2paths.find(need.hash())->second;
++            AutoCloseFD fd; if (!(fd = open(path.c_str(), O_RDONLY | O_CLOEXEC))) { throw SysError("opening file '%1%'", path); }
++            if (lseek(fd.get(), need.offset(), SEEK_SET) != (off_t)need.offset()) { throw SysError("seeking file '%1%' to %2%", path, need.offset()); }
++            readFile(fd.get(), outputSink, need.size());
++        }
++
++        if (json) {
++            if (jsonScript) { debugSink("\n],"); } debugSink("\"stats\":"); auto stats = nlohmann::json::object();
++            stats["dir_c"] = dir_c; stats["exec_c"] = exec_c; stats["reg_c"] = reg_c; stats["sym_c"] = sym_c; stats["link_c"] = link_c; stats["slice_c"] = slice_c; stats["copy_c"] = copy_c; stats["patch_c"] = patch_c; stats["ref_c"] = ref_c;
++            stats["dir_s"] = dir_s; stats["exec_s"] = exec_s; stats["reg_s"] = reg_s; stats["sym_s"] = sym_s; stats["link_s"] = link_s; stats["slice_s"] = slice_s; stats["copy_s"] = copy_s; stats["patch_s"] = patch_s; stats["ref_s"] = ref_s;
++            stats["script_s"] = scriptSize;
++            debugSink(stats.dump()); debugSink("}");
++        } else {
++            // TODO: should write to debugSink:
++            std::cerr<<"The target system has "<<(reg_c)<<" regular + "<<(exec_c)<<" executable + "<<(sym_c)<<" symlink + "<<(dir_c)<<" directory = "<<(reg_c+exec_c+sym_c+dir_c)<<" files"<<std::endl;
++            std::cerr<<"with ( "<<(reg_s)<<" regular + "<<(exec_s)<<" executable + "<<(sym_s)<<" symlink + "<<(dir_s)<<" directory = "<<(reg_s+exec_s+sym_s+dir_s)<<" file ) bytes."<<std::endl;
++            std::cerr<<"Reconstructing the system from"<<std::setw(10)<<(scriptSize+copy_s+patch_s)<<" bytes, thereof"<<std::endl;
++            std::cerr<<"           "<<                   "the update script ("<<std::setw(10)<<(scriptSize)<<" bytes),"<<std::endl;
++            std::cerr<<" including "<<std::setw(6)<<(  ref_c)<<" references ("<<std::setw(10)<<(  ref_s)<<" bytes),"<<std::endl;
++            std::cerr<<"      plus "<<std::setw(6)<<( copy_c)<<" new chunks ("<<std::setw(10)<<( copy_s)<<" bytes)"<<std::endl;
++            std::cerr<<"       and "<<std::setw(6)<<(patch_c)<<" patches    ("<<std::setw(10)<<(patch_s)<<" bytes)."<<std::endl;
++            std::cerr<<"   Reusing "<<std::setw(6)<<( link_c)<<" old files  ("<<std::setw(10)<<( link_s)<<" bytes)"<<std::endl;
++            std::cerr<<"       and "<<std::setw(6)<<(slice_c)<<" old chunks ("<<std::setw(10)<<(slice_s)<<" bytes)."<<std::endl;
++        }
++
++        outputSink.flush();
++        debugSink.flush();
++    }
++};
++
++static auto rStoreSend = registerCommand2<CmdStoreSend>({"store", "send"});

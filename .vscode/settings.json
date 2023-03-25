@@ -7,6 +7,7 @@
 		"addplot", // latex
 		"addrinuse", // abbr (address in use)
 		"adfs", // kmod / file system
+		"adns", // package
 		"affs", // kmod / file system
 		"agetty", // program
 		"ahci", // kmod
@@ -38,6 +39,7 @@
 		"bootx64", // EFI
 		"bridgeadapter", // virtual box
 		"bridgedifs", // virtual box
+		"bsdiff", // program
 		"btintel", // kmod
 		"btqca", // kmod
 		"btusb", // kmod
@@ -84,6 +86,7 @@
 		"dpkg", // program
 		"drawio", // program
 		"dropbear", // program
+		"dtbo", // file type
 		"dtbs", // file type
 		"dtoverlay", // option
 		"dtparam", // option
@@ -129,6 +132,7 @@
 		"gids", // abbr/plural (group IDs)
 		"gnugrep", // package
 		"gnupg", // program
+		"gnutls", // package
 		"gollenstede", // name
 		"gparted", // program
 		"gpio", // abbr (general purpose IO)
@@ -171,6 +175,7 @@
 		"keydev", // cli arg
 		"keygen", // program / function
 		"kmod", // program/function
+		"koenkk", // name
 		"lcrypto", // lib??
 		"LESSOPEN", // env var
 		"libaio", // cli arg
@@ -215,6 +220,7 @@
 		"mmcblk", // diks type
 		"mmio", // abbr (memory mapped IO)
 		"modifyvm", // virtual box
+		"mosquitto", // package
 		"mountpoint", // program / function
 		"mpris", // abbr
 		"msecs", // abbr (milliseconds)
@@ -222,6 +228,7 @@
 		"multiplatform", // nix
 		"nameserver", // cli arg
 		"nanorc", // file name
+		"nars", // abbr (Nix Archives)
 		"ncdu", // program
 		"netns", // linux
 		"netrom", // kmod
@@ -271,7 +278,9 @@
 		"pbkdf", // cli arg
 		"pciutils", // package
 		"PCRE", // abbr (perl compatible regular expressions)
+		"pcsclite", // package
 		"pieeprom", // abbr
+		"pinentry", // package
 		"pkgs", // nix
 		"pname", // nix/abbr (package name)
 		"podman", // program
@@ -297,6 +306,7 @@
 		"rbind", // cli arg
 		"rdesktop", // program
 		"readarray", // bash
+		"readline", // package
 		"realpath", // program / function
 		"reconix", // this repo
 		"redistributable", // word
@@ -340,6 +350,7 @@
 		"startvm", // virtual box
 		"stdenv", // nix
 		"storageattach", // virtual box
+		"stringification", // word (the act of turning something into a string)
 		"sublist", // nix function
 		"subshell", // bash
 		"suspendable", // word
@@ -367,10 +378,12 @@
 		"tmpfiles", // systemd
 		"tmpfs", // linux
 		"toplevel", // nix
+		"toplevels", // plural
 		"traefik", // package
 		"ttymxc", // linux
 		"typec", // abbr (USB Type-C)
 		"typecode", // cli arg
+		"typeof", // keyword
 		"tzdata", // pckage
 		"TZDIR", // env var
 		"uart", "uarts", // serial protocol
@@ -425,8 +438,9 @@
 		"xzcat", // program / function
 		"yescrypt", // package
 		"zbar", // program
+		"zigbee2mqtt", // package
 		"zoneinfo", // file name
-		"zstdcat", // program / function
+		"zstd", "zstdcat", // program / function
     ],
     "markdown.validate.ignoredLinks": [ // these _are_ valid ...
         "./hosts/",

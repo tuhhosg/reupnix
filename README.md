@@ -52,6 +52,7 @@ The modules are inactive by default, and are designed to be mostly independent f
 See `apps` and `devShells` exported by the flake, plus the [installation](#installation--initial-setup) section below.
 
 [`./checks/`](./checks/) contains tests and evaluations. These are built as part of `nix flake check` and can individually be built and executed by running `nix run .#check:<name> -- <args>`.
+Some checks produce output files in [`./out`](./out/). These contain the data for publications and can be copied to the `data/` dir of the papers.
 
 
 ## Installation / Initial Setup

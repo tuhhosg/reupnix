@@ -16,9 +16,10 @@ in {
     mdbook = prev.mdbook.overrideAttrs (old: lib.optionalAttrs (pkgs.system == "aarch64-linux") {
         doCheck = false;
     });
-    nix = prev.nix.overrideAttrs (old: lib.optionalAttrs (pkgs.system == "aarch64-linux") {
+    /* nix = prev.nix.overrideAttrs (old: lib.optionalAttrs (pkgs.system == "aarch64-linux") {
         doInstallCheck = false;
-    });
+    }); */
+    #nix = inputs.nix.packages.${pkgs.system}.nix;
 
 
     # No idea why these fail:

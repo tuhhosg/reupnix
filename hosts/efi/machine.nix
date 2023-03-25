@@ -5,7 +5,7 @@ in { imports = [ ({ ## Hardware
 
     system.stateVersion = "22.05";
 
-    th.hermetic-bootloader.loader = "systemd-boot";
+    #wip.fs.disks.devices.primary.size = 128035676160;
 
     boot.kernelParams = [ "console=ttyS0" ];
     networking.interfaces.${if isArm then "enp0s1" else "ens3"}.ipv4.addresses = [ { # vBox: enp0s3 ; qemu-x64: ens3 ; qemu-aarch64: enp0s3
@@ -14,18 +14,20 @@ in { imports = [ ({ ## Hardware
     networking.defaultGateway = "10.0.2.2";
     networking.nameservers = [ "1.1.1.1" ]; # [ "10.0.2.3" ];
 
+    th.hermetic-bootloader.loader = "systemd-boot";
+
     th.minify.shrinkKernel.usedModules = ./minify.lsmod;
 
     boot.initrd.availableKernelModules = [ "virtio_net" "virtio_pci" "virtio_blk" "virtio_scsi" ];
 
 
-}) (lib.mkIf (hasFlag "minimal") { ## Super-minification
+}) (lib.mkIf (false && hasFlag "minimal") { ## Super-minification
 
     # Just to prove that this can be installed very small (with a 256MiB disk, the »/system« partition gets ~170MiB):
     wip.fs.disks.devices.primary.size = "256M"; wip.fs.disks.devices.primary.alignment = 8;
     th.hermetic-bootloader.slots.size = lib.mkForce "${toString (32 + 1)}M"; # VBox EFI only supports FAT32
     th.target.fs.dataSize = "1K"; fileSystems."/data" = lib.mkForce { fsType = "tmpfs"; device = "tmpfs"; }; # don't really need /data
-    fileSystems."/system".formatOptions = lib.mkForce "-E nodiscard"; # (remove »-O inline_data«, which does not work for too small inodes used as a consequence of the tiny FS size)
+    #fileSystems."/system".formatOptions = lib.mkForce "-E nodiscard"; # (remove »-O inline_data«, which does not work for too small inodes used as a consequence of the tiny FS size)
 
 
 }) (lib.mkIf true { ## Temporary Test Stuff

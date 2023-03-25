@@ -14,6 +14,13 @@ in rec {
         wip.setup.scripts.extra-setup = { path = ../utils/setup.sh; order = 1500; }; # (for reasons of weirdness, this only works when placed here)
     };
 
+    copy-files = pkgs: name: attrs: let
+        copy = pkgs.runCommandLocal name { } ''
+            mkdir $out
+            ${lib.concatStringsSep "\n" (lib.mapAttrsToList (name: path: let dir = builtins.dirOf name; in (if dir != "." then "mkdir -p $out/${lib.escapeShellArg dir} ; " else "") + ''cp -aT ${lib.escapeShellArg path} $out/${lib.escapeShellArg name}'') attrs)}
+        '';
+    in lib.mapAttrs (name: _: "${copy}/${name}") attrs;
+
     ## Extracts the result of »pkgs.dockerTools.pullImage«:
     extract-docker-image = pkgs: image: pkgs.runCommandLocal (if lib.isString image then "container-image" else "docker-image-${image.imageName}-${image.imageTag}") { inherit image; outputs = [ "out" "info" ]; } ''
         set -x

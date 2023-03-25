@@ -26,9 +26,9 @@ More abstractions to come ...
 
 ```nix
 #*/# end of MarkDown, beginning of NixOS module:
-dirname: inputs: { config, pkgs, lib, nodes, utils, ... }: let inherit (inputs.self) lib; in let
+dirname: inputs: specialArgs@{ config, pkgs, lib, nodes, utils, extraModules, ... }: let inherit (inputs.self) lib; in let
     cfg = config.th.target.containers;
-    hostCfg = config;
+    hostConfig = config;
 
     types.storePath = lib.mkOptionType {
         name = "path in /nix/store"; check = x: (lib.isStorePath x) || (lib.isStorePath (builtins.head (builtins.split ":" x)));
@@ -50,13 +50,16 @@ in {
             description = "";
             type = lib.types.attrsOf (lib.types.submodule ({ name, ... }: { options = {
                 name = lib.mkOption { description = "The container's name from the attribute name."; type = lib.types.str; default = name; readOnly = true; };
-                modules = lib.mkOption { description = "For containers that do use NixOS, the configuration's base modules(s)."; type = lib.types.listOf (lib.types.functionTo lib.types.anything); default = [ ]; };
+                modules = lib.mkOption { description = "For containers that do use NixOS, the configuration's base modules(s)."; type = lib.types.listOf ((lib.types.functionTo lib.types.anything) // { merge = loc: fns: (lib.head fns).value; }); default = [ ]; };
                 rootFS = lib.mkOption { description = ''
-                    For non-NixOS containers, paths to filesystem roots that will be overlayed under a tmpfs. Higher indices will be mounted higher.
+                    For non-NixOS containers, paths to filesystem roots that will layered atop each other to form the rootfs. Higher indices will be mounted higher.
                     To ensure that the paths will be present on the final system, they must evaluate to nix store paths, that is, be nix derivations (nix build results) or existing store paths as literal strings followed by their content hash (»/nix/store/...:sha256-«).
-                    The final filesystem must provide an init process at »/init«. The init process is expected to exit with code 133 if it wants to be restarted, and respond to »SIGRTMIN+3« by shutting down.
                     Specifying layers makes ».modules« largely defunct.
                 ''; type = lib.types.listOf (types.storePath); default = [ ]; };
+                readOnlyRootFS = (lib.mkEnableOption "read-only `/`, if used with `.rootFS`"); #// { default = true; }; TODO: this will need at least »/var« and »/etc« writable or populated correctly, see »nixpkgs/nixos/modules/virtualisation/nixos-containers.nix#startScript«
+                workingDir = lib.mkOption { description = "If used with `.rootFS`, CWD for the `.command`."; type = lib.types.nullOr lib.types.str; default = null; };
+                command = lib.mkOption { description = "If used with `.rootFS`, the command to run inside the container. The command is expected to exit with code 133 if it wants to be restarted, and respond to »SIGRTMIN+3« by shutting down. Further, it has to fulfill the reaping duties of PID 1."; type = lib.types.listOf lib.types.str; default = [ ]; };
+                env = lib.mkOption { description = "If used with `.rootFS`, environment variables to set for `.command`."; type = lib.types.attrsOf lib.types.str; default = { }; };
                 sshKeys = lib.mkOption { description = "SSH keys that will be configured to allow direct login into the container as that user."; type = lib.types.attrsOf (lib.types.listOf lib.types.str); default = { }; };
             }; }));
             default = { primary = { }; };
@@ -69,34 +72,33 @@ in {
     in lib.mkIf cfg.enable (lib.mkMerge [ ({
 
         containers = lib.mapAttrs (name: cfg: lib.mkMerge [ ({
-            nixpkgs = inputs.nixpkgs; # (probably defaults to the version where the »nixosSystem« function comes from, which should be the same one)
+            nixpkgs = pkgs.path; # (the default)
 
             config = { config, pkgs, ... }: { imports = [ ({
-                # Start with the same »pkgs« as the host:
-                # Setting »nixpkgs.pkgs = pkgs« would mean that all overlays that happen to be applied to the host »pkgs« (either directly at instantiation or via »config.nixpkgs.overlays«) are applied to the »pkgs« argument passed to all container modules.
-                # But just because the host has an overlay applied does not mean that the container should also have it -- if it does, it should be applied again by including and enabling the respective module.
-                # Also, applying overlays twice (when importing the same module again) is often, but not necessarily a no-op.
-                nixpkgs.overlays = lib.wip.getOverlaysFromInputs inputs;
-                # We start with a new set of modules with only this one, its imports, and the default ones from »nixpkgs«, so import the modules from any other inputs again.
-                imports = lib.wip.getModulesFromInputs inputs;
+                imports = (/* lib.trace (lib.length extraModules) */ extraModules); # (»extraModules« should include all modules applied to the host that are not unique to the hosts functionality but are also not in »nixpkgs« (i.e. things that _could_ be in nixpkgs); »lib.wip.mkNixosConfiguration« adds all the library modules from this flake nd its inputs, »lib.th.testing.overrideBase« can be used to add additional modules))
             }) ({
                 # Some base configuration:
 
                 th.minify.enable = true; # don't let the container pull in all the stuff that the host avoided
                 wip.base.enable = true;
 
-                system.stateVersion = lib.mkDefault hostCfg.system.stateVersion;
+                system.stateVersion = lib.mkDefault hostConfig.system.stateVersion;
                 users.allowNoPasswordLogin = true;
 
             }) ({
                 # Apply ».config«:
-                imports = map (module: args@{ pkgs, ... }: module args) cfg.modules; # (apparently the module system only provides the »pkgs« arg if the function called (directly) names it)
+                imports = map (module: let
+                    attrs = module (builtins.functionArgs module);
+                    pos = builtins.unsafeGetAttrPos (lib.head (lib.attrNames attrs)) attrs;
+                in { _file = pos.file + ":" + (toString pos.line); imports = [ module ]; }) cfg.modules;
+
+                #imports = map (module: args@{ pkgs, ... }: module args) cfg.modules; # (apparently the module system only provides the »pkgs« arg if the function called (directly) names it)
 
             }) ({
                 # Apply ».rootFS«:
                 # (nothing to do, see below)
 
-            }) ]; };
+            }) ]; _file = "${dirname}/containers.nix.md#baseConfig"; };
 
         }) (lib.mkIf (cfg.rootFS == [ ]) { # Root filesystem native NixOS container
 
@@ -105,16 +107,26 @@ in {
         }) (lib.mkIf (cfg.rootFS != [ ]) { # Root filesystem + init generic container
 
             ephemeral = false; # use /var/lib/nixos-containers/${name} for / inside the container
-            path = lib.mkForce "/"; # »${path:-...}/init« gets sourced inside the container to resume the boot process
-            # alternatively, replacing »config.system.build.bootStage2« with this should also work:
-            bindMounts."/init" = { hostPath = "${pkgs.writeShellScript "foreign-container-init" ''
-                ${pkgs.util-linux}/bin/umount -l /init # remove this wrapper
-                ${pkgs.util-linux}/bin/umount -l /nix/store /run/wrappers /nix/var/nix/{daemon-socket,db,gcroots,profiles} # probably need to do this next-to-last
-                exec /init # the actual container init executable
-            ''}"; isReadOnly = true; };
+            path = lib.mkForce ((pkgs.writeTextFile ({ # (the nixos-container entry point is »${path}/init«)
+                name = "container-init-${cfg.name}"; destination = "/init"; executable = true;
+            } // { text = let
+                esc = lib.escapeShellArg;
+            in ''
+                ${pkgs.util-linux}/bin/umount -l /run/wrappers || true
+                ${pkgs.util-linux}/bin/umount -l /nix/var/nix/{daemon-socket,db,gcroots,profiles} || exit
+                ${pkgs.util-linux}/bin/umount -l /nix/store || exit # probably need to do this next-to-last
+                unset PRIVATE_NETWORK LOCAL_ADDRESS LOCAL_ADDRESS6 HOST_ADDRESS HOST_ADDRESS6 HOST_BRIDGE HOST_PORT
+                export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+                echo "Launching container's ».command«:"
+                ${if cfg.workingDir != null then "cd ${esc cfg.workingDir}" else "# no CWD"}
+                ${lib.concatStringsSep "\n" (lib.mapAttrsToList (n: v: "export ${esc n}=${esc v}") cfg.env)}
+                exec ${lib.concatMapStringsSep " " esc cfg.command}
+            ''; })).overrideAttrs (old: { buildCommand = old.buildCommand + ''
+                echo ${pkgs.system} >$out/system
+            ''; }));
 
         }) ({
-            autoStart = true; timeoutStartSec = "1min"; # timeout, but for what exactly to happen? Ideas: The unit on the host to come up (again, measured how)? The container »systemd« to reach some ».target«? And then it suicides?
+            autoStart = true; timeoutStartSec = if cfg.rootFS != [ ] then "Infinity" else "1min"; # timeout, but for what exactly to happen? Ideas: The unit on the host to come up (again, measured how)? The container »systemd« to reach some ».target«? And then it suicides?
 
         }) ({
             # More possible settings:
@@ -138,17 +150,23 @@ in {
 
         # For non-native containers, create an overlayfs where / will be bound to:
         fileSystems = lib.wip.mapMerge (name: cfg: if cfg.rootFS != [ ] then {
-            "/var/lib/nixos-containers/${name}" = {
+            "/var/lib/nixos-containers/${name}" = (if (lib.length cfg.rootFS == 1) && cfg.readOnlyRootFS then {
+                options = [ "bind" "ro" ]; device = "${lib.head cfg.rootFS}";
+            } else {
                 fsType = "overlay"; device = "overlay";
                 options = [
                     "lowerdir=${lib.concatStringsSep ":" (lib.reverseList cfg.rootFS)}"
+                ] ++ (lib.optionals (!cfg.readOnlyRootFS) [
                     "workdir=/run/containers/${name}.workdir"
                     "upperdir=/run/containers/${name}"
-                ];
-                depends = (map toString cfg.rootFS) ++ [ "/run/containers" ];
+                ]);
+                depends = (map toString cfg.rootFS) ++ (lib.optional (!cfg.readOnlyRootFS) "/run/containers" );
+            }) // {
                 preMountCommands = ''
-                    mkdir -p /var/lib/nixos-containers/${name} /run/containers/${name}.workdir /run/containers/${name}
-                '';
+                    mkdir -p /var/lib/nixos-containers/${name}
+                '' + (lib.optionalString (!cfg.readOnlyRootFS) ''
+                    mkdir -p /run/containers/${name}.workdir /run/containers/${name}
+                '');
             };
         } else { }) cfg.containers;
 

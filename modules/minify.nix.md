@@ -219,6 +219,9 @@ in {
                 dosfstools = prev.dosfstools.overrideAttrs (prev: {
                     checkInputs = [ ]; doCheck = true; # depends on vim (xxd), which is broken without the locale stuff
                 });
+                gnupg = prev.gnupg.overrideAttrs (prev: {
+                    enableMinimal = true;
+                });
             }) ];
         });
 
@@ -254,13 +257,20 @@ in {
 
                 This version mounts a writable tmpfs overlay over the static etc, allowing the creation on not-world-readable files by activation scripts.
             '';
-            enableByDefault = false;
+            #enableByDefault = false;
             # TODO: both of these could use »config.fileSystems« (see »./target/containers.nix.md« for mount sources)!
             # The new etc script must run before any write to »/etc«.
             system.activationScripts.etc = lib.mkForce "";
             system.activationScripts."AA-etc" = { deps = [ "specialfs" ]; text = ''
                 mkdir -pm 000 /run/etc-overlay ; mkdir -p -m 755 /run/etc-overlay/{workdir,upperdir}
                 mount -t overlay overlay -o lowerdir=${config.system.build.etc}/etc,workdir=/run/etc-overlay/workdir,upperdir=/run/etc-overlay/upperdir /etc
+
+                ${lib.concatMapStringsSep "\n" (file: let esc = lib.escapeShellArg; in ''
+                    rm /etc/${esc file.target}{.mode,.uid,.gid} &>/dev/null || true
+                    cat ${esc file.source} >/etc/${esc file.target}.tmp ; mv -f /etc/${esc file.target}{.tmp,}
+                    chown ${esc file.user}:${esc file.group} /etc/${esc file.target}
+                    chmod ${esc file.mode} /etc/${esc file.target}
+                '') (lib.filter (f: f.mode != "symlink") (lib.attrValues config.environment.etc))}
             ''; };
             boot.initrd.kernelModules = [ "overlay" ]; # the activation scripts are run between initrd and systemd, so apparently the module must (have been) loaded in initrd
             # This mount can't be done as »config.fileSystems."/etc"«, because it would be »neededForBoot« (to be available in the activation scripts), and that would make the initramfs depend on »config.system.build.etc«, which would cause a new build of the initramfs on any change to etc.
@@ -275,6 +285,7 @@ in {
             system.activationScripts."AA-etc" = { deps = [ "specialfs" ]; text = ''
                 mkdir -pm 000 /etc ; mount -o bind,ro ${config.system.build.etc}/etc /etc
             ''; };
+            # TODO: assert that there is no »config.environment.etc.*.mode != "symlink"«?
             environment.etc.mtab.source = "/proc/mounts"; # (»lib.types.path« only allows absolute targets)
             environment.etc.NIXOS.text = ""; # some tooling wants this to exist
             systemd.services.systemd-tmpfiles-setup.serviceConfig.ExecStart = [ "" "systemd-tmpfiles --create --remove --boot --exclude-prefix=/dev --exclude-prefix=/etc" ];
@@ -285,25 +296,32 @@ in {
             description = ''
                 Remove »activationScripts.users« and replace it by static shadow files (to remove the dependency on »perl«).
                 Hashed passwords will be world-readable (and may therefore only be set via ».hashedPassword«), and all added users and groups will need fixed IDs.
+                This seems to be incompatible with systemd services that require certain types of namespacing.
             '';
         } // (let
             getUid = u: toString (lib.wip.ifNull u.uid (config.ids.uids.${u.name} or (throw  "User ${u.name} has no UID")));
             getGid = g: toString (lib.wip.ifNull g.gid (config.ids.gids.${g.name} or (throw "Group ${g.name} has no GID")));
+            defaultMode = "symlink"; # "644" # (not sure whether these files should be writable)
         in {
-            system.activationScripts.users = lib.mkForce "";
             users.mutableUsers = false; assertions = [ { assertion = config.users.mutableUsers == false; message = "Static user generation is incompatible with »users.mutableUsers = true«."; } ];
 
             # Statically generate user files:
-            environment.etc.group.text  = "${lib.concatMapStringsSep "\n" (g: (
+            environment.etc.group  = { text = "${lib.concatMapStringsSep "\n" (g: (
                 "${g.name}:x:${getGid g}:${lib.concatStringsSep "," g.members}"
-            )) (lib.attrValues config.users.groups)}\n";
-            environment.etc.passwd.text = "${lib.concatMapStringsSep "\n" (u: (
+            )) (lib.attrValues config.users.groups)}\n"; mode = defaultMode; };
+            environment.etc.passwd = { text = "${lib.concatMapStringsSep "\n" (u: (
                 "${u.name}:x:${getUid u}:${if lib.wip.matches ''^[0-9]+$'' u.group then u.group else if config.users.groups?${u.group or u.name} then getGid config.users.groups.${u.group} else throw "User ${u.name}'s group ${u.group} does not exist"}:${u.description}:${u.home}:${utils.toShellPath u.shell}"
-            )) (lib.attrValues config.users.users)}\n";
+            )) (lib.attrValues config.users.users)}\n"; mode = defaultMode; };
             environment.etc.shadow = { text = "${lib.concatMapStringsSep "\n" (u: (
                 if u.password != null || u.passwordFile != null then throw "With static user generation, user passwords may only be set as ».hashedPassword« (check user ${u.name})" else
                 "${u.name}:${lib.wip.ifNull u.hashedPassword "!"}:1::::::"
-            )) (lib.attrValues config.users.users)}\n"; }; # mode = "640"; gid = config.ids.gids.shadow; }; # A world-readable shadow file kind of defats its own purpose, but systems that use this shouldn't have passwords anyway (and anything written here would already be world-readable in the store anyway).
+            )) (lib.attrValues config.users.users)}\n"; mode = "640"; gid = config.ids.gids.shadow; }; # A world-readable shadow file kind of defats its own purpose, but systems that use this shouldn't have passwords anyway (and anything written here would already be world-readable in the store anyway).
+            environment.etc.subuid = { text = ''
+                # TODO
+            ''; mode = defaultMode; };
+            environment.etc.subgid = { text = ''
+                # TODO
+            ''; mode = defaultMode; };
 
             # Ensure all users/groups have static IDs. Use »config.ids« as intermediary to make undetected conflicts less likely. (Should scan for duplicates.)
             ids = { uids = {

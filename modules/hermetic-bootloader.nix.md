@@ -57,7 +57,7 @@ in {
         slots.disk = lib.mkOption { description = ""; type = lib.types.str; default = "primary"; };
         slots.size = lib.mkOption { description = "Size of the boot slots."; type = lib.types.str; default = "64M"; };
         slots.number = lib.mkOption { description = "Number of boot slots."; type = lib.types.ints.between 2 8; default = 2; };
-        slots.currentLabel = lib.mkOption { description = "FS label of the boot slot written by the current config build. Must be unique to each build. This can't refer to the build output, as that would create a loop. Using the input sources works (as they should be the only thing dictating the build output), but can cause unnecessary changes to »/etc/fstab«, thus »/etc«, and the bootloader."; type = lib.types.str; default = "bt-${builtins.substring 11 8 inputs.self.outPath}"; };
+        slots.currentLabel = lib.mkOption { description = "FS label of the boot slot written by the current config build. Must be unique to each build and at most 11 bytes long. This can't refer to the build output, as that would create a loop. Using the input sources works (as they should be the only thing dictating the build output), but can cause unnecessary changes to »/etc/fstab«, thus »/etc«, and the bootloader."; type = lib.types.strMatching ''^.{8,11}$''; default = "bt-${builtins.substring 11 8 inputs.self.outPath}"; };
 
         builder = lib.mkOption { internal = true; type = lib.types.package; readOnly = true; };
 
