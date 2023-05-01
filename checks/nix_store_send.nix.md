@@ -44,7 +44,7 @@ dirname: inputs: pkgs: let
                 services.mosquitto.enable = true;
                 services.mosquitto.listeners = [ ]; # (bugfix)
                 services.mosquitto.package = lib.mkIf updated (pkgs.mosquitto.overrideAttrs (old: rec { # from v2.0.14
-                    pname = "mosquitto"; version = "2.0.15"; src = pkgs.fetchFromGitHub {owner = "eclipse"; repo = pname; rev = "v${version}"; sha256 = "sha256-H2oaTphx5wvwXWDDaf9lLSVfHWmb2rMlxQmyRB4k5eg="; };
+                    pname = "mosquitto"; version = "2.0.15"; src = pkgs.fetchFromGitHub { owner = "eclipse"; repo = pname; rev = "v${version}"; sha256 = "sha256-H2oaTphx5wvwXWDDaf9lLSVfHWmb2rMlxQmyRB4k5eg="; };
                 }));
             }) ];
         };
@@ -154,6 +154,11 @@ dirname: inputs: pkgs: let
             #nixpkgs.overlays = [ (final: prev: { systemd = (prev.systemd.override { withAnalyze = true; }); }) ];
             wip.services.dropbear.rootKeys = lib.readFile "${inputs.self}/utils/res/ssh_testkey_1.pub";
         };
+
+        # »rpi« cross-compiled from x64:
+        "x64:rpi" = test.overrideBase rpi ({
+            nixpkgs = lib.mkForce { localSystem.system = "x86_64-linux"; crossSystem.system = "aarch64-linux"; };
+        });
     };
 
     systems = {
@@ -193,7 +198,7 @@ in { inherit systems installers; script = test.useTsBlock { inherit pkgs dirname
         inherit (pkgs) bash coreutils time zstd;
         nix = inputs.nix.packages.${pkgs.system}.nix;
     };
-    systems = lib.mapAttrs (k: systems: toplevels (builtins.removeAttrs systems [ "rpi" ])) (builtins.removeAttrs systems [ "withApps" "withUpdate" ]);
+    systems = lib.mapAttrs (k: systems: toplevels (builtins.removeAttrs systems [ "rpi" "x64:rpi" ])) (builtins.removeAttrs systems [ "withApps" "withUpdate" ]);
 }; }; }
 /*# end of nix
 ```
@@ -202,7 +207,7 @@ in { inherit systems installers; script = test.useTsBlock { inherit pkgs dirname
 ## Update Evaluation
 
 The Nix code above defined some (sets of) systems, which this TypeScript code can now run update tests on.
-This creates the file [`../out/nix_store_send.csv`](../out/nix_store_send.csv), which we then use to generate plots and draw conclusions.
+This creates the file `../out/nix_store_send.csv`, which we then use to generate plots and draw conclusions.
 
 ````ts
 const { spawnSync, } = require('child_process'), FS = require('fs');
@@ -407,9 +412,10 @@ Install e.g the rPI version of a system to a microSD card (on an x64 system):
 And here is the semi-automated boot performance test:
 ```bash
  # Install the system to a microSD card:
- nix run .'#'checks.x86_64-linux.nix_store_send.passthru.installers.withUpdate.rpi -- install-system /dev/mmcblk0
+ nix run .'#'checks.x86_64-linux.nix_store_send.passthru.installers.withUpdate.rpi -- install-system /dev/mmcblk0 # (adjust the /dev/* path as needed)
+ #nix run .'#'checks.x86_64-linux.nix_store_send.passthru.installers.withUpdate.x64:rpi -- install-system /dev/mmcblk0 # or this for the cross-compiled version (not recommended, also does not compile ...)
  # Then boot the system on a rPI4, and make sure that »$ssh« works to log in and that the PI logs to this host's »/dev/ttyUSB0«:
- mkdir -p out/logs ; LC_ALL=C nix-shell -p tio -p moreutils --run bash # open a shell with the required programs, then in that shell:
+ mkdir -p out/logs ; LC_ALL=C nix-shell -p openssh -p tio -p moreutils --run bash # open a shell with the required programs, then in that shell:
  ssh='ssh -o LogLevel=QUIET -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i utils/res/ssh_testkey_1 root@192.168.8.85'
  function wait4boot () { for i in $(seq 20) ; do sleep 1 ; if $ssh -- true &>/dev/null ; then return 0 ; fi ; printf . ; done ; return 1 ; }
  wait4boot
@@ -422,7 +428,7 @@ And here is the semi-automated boot performance test:
      wait4boot || exit ; echo
  done ) || { echo 'oh noo' ; false ; }
 ```
-`LC_ALL=C nix-shell -p tio -p moreutils --run 'tio --timestamp --timestamp-format 24hour-start /dev/ttyUSB0' # exit with ctrl-t q`
+`LC_ALL=C nix-shell -p openssh -p tio -p moreutils --run 'tio --timestamp --timestamp-format 24hour-start /dev/ttyUSB0' # exit with ctrl-t q`
 
 Test to "reboot" with kexec (but that does not work on the iPI):
 ```bash

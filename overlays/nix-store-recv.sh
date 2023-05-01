@@ -50,8 +50,8 @@ done
 set -e # TODO: get rid of this and use »|| fail«
 
 function main {
-    generic-arg-parse "$@"
-    generic-arg-help "$0" '' "$description" "$details"
+    generic-arg-parse "$@" || return
+    generic-arg-help "$0" '' "$description" "$details" || return
 
     # As root, give this script write access to a read-only /nix/store/:
     if [[ $(id -u) == 0 ]] && ( ! touch /nix/store/.rw-test &>/dev/null || ! rm /nix/store/.rw-test &>/dev/null ) ; then
@@ -61,7 +61,7 @@ function main {
         fi
     fi
     unset args[internal-no-unshare]
-    generic-arg-verify 3
+    generic-arg-verify 3 || return 3
 
     fail() { code=$? ; exit $code ; }
     if [[ ${args[debug]:-} ]] ; then

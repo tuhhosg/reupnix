@@ -42,8 +42,9 @@ in pkgs: rec {
         scripts = lib.wip.writeSystemScripts { system = system'; pkgs = pkgs; };
     in ''(
         tmp=$( mktemp -d ) && trap "rm -rf '$tmp'" EXIT || exit
-        cmd=( ${scripts} install-system $tmp/image --no-inspect --toplevel=${toplevel system} --vm-shared=$tmp --x-tmp=$tmp --x-out="$out" )
-        if [[ ''${args[debug]:-} ]] ; then ''${cmd[@]} --debug || exit ; else ''${cmd[@]} --quiet || exit ; fi
+        install=( ${scripts} install-system $tmp/image --no-inspect --toplevel=${toplevel system} --vm-shared=$tmp --x-tmp=$tmp --x-out="$out" )
+        if [[ ! -e /dev/disk ]] ; then install+=( --vm ) ; fi # (inside a container without »--volume /dev/:/dev/«)
+        if [[ ''${args[debug]:-} ]] ; then ''${install[@]} --debug || exit ; else ''${install[@]} --quiet || exit ; fi
         if [[ -d $tmp/out && $( ls $tmp/out ) ]] ; then cp -r $tmp/out/* "$out" ; fi
         cat $tmp/log || exit
     )'';

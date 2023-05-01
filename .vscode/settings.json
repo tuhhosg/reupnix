@@ -35,6 +35,7 @@
 		"bootcode", // filename
 		"bootcommand", // concat
 		"bootctl", // program
+		"bootdelay", // option
 		"bootloader", "bootloaders", // word
 		"bootx64", // EFI
 		"bridgeadapter", // virtual box
@@ -196,6 +197,7 @@
 		"localedata", // concat
 		"localmodconfig", // cli arg (kernel)
 		"logind", // systemd
+		"loglevel", // option
 		"losetup", // program / function
 		"lowerdir", // mount overlay option
 		"lowlevel", // concat
@@ -220,6 +222,7 @@
 		"mmcblk", // diks type
 		"mmio", // abbr (memory mapped IO)
 		"modifyvm", // virtual box
+		"moreutils", // package
 		"mosquitto", // package
 		"mountpoint", // program / function
 		"mpris", // abbr
@@ -373,6 +376,7 @@
 		"timefmt", // cli arg
 		"timesync", // systemd
 		"timesyncd", // daemon
+		"tini", // program
 		"TKIP", // abbr
 		"TMPDIR", // env var
 		"tmpfiles", // systemd
@@ -441,9 +445,9 @@
 		"zigbee2mqtt", // package
 		"zoneinfo", // file name
 		"zstd", "zstdcat", // program / function
-    ],
-    "markdown.validate.ignoredLinks": [ // these _are_ valid ...
-        "./hosts/",
-        "./modules/"
-    ],
+	],
+	"markdown.validate.ignoredLinks": [ // these _are_ valid ...
+		"./hosts/",
+		"./modules/"
+	],
 }

@@ -1,0 +1,183 @@
+#!/usr/bin/env -S bash -u -o pipefail
+
+description="Provides a way of running »nix« commands without installing Nix, by running the commands inside a container.
+It probably makes sense to create an »alias nix='./utils/container-nix --options=... --'« and use that as »nix«.
+When called without »NIX_ARGS«, this opens a bash shell in the container, with »nix« available directly.
+Also, anything executed by »nix run« will run inside the container, and »result« symlinks are resolvable inside the container (outside, the leading »/nix« has to be replaced with the value of »--nix-dir«).
+This repo is volume-mounted to the CWD in the container (»/repo«).
+"
+otherArch=x86_64 ; [[ $( uname --machine ) != x86_64 ]] || otherArch=aarch64
+declare -g -A allowedArgs=(
+        [--runtime=BIN]="Path to or binary name of the container runtime to use. Defaults to »docker«. »podman« may or may not work as well."
+       [--nix-dir=PATH]="Path to create and/or use the »/nix/« dir at. Defaults to »../.nix/« (relative to this script)."
+               [--init]="Whether to force initialization of the »--nix-dir« dir. Enabled implicitly only if »--nix-dir« does not exist yet. Should not be enabled if »--nix-dir« has been initialized before."
+      [--no-privileged]="Don't run the container as »--privileged«. This probably breaks things."
+           [--pass-dev]="Pass the host's »/dev/« into the container. Otherwise, installations will happen in qemu VMs."
+             [--no-kvm]="With »--no-privileged«, also do not pass in »/dev/kvm«. VMs will be very slow. May be incompatible with »--pass-dev«."
+          [--no-binfmt]="Do not create a (temporary but system-wide) »binfmt_misc« registration for »$otherArch« (if there is one whose name contains that word yet). This requires the container to run as »--privileged« and »root«. (Uses <https://github.com/tonistiigi/binfmt>.)"
+            [--verbose]="Whether to print out the container commands before running them."
+[--container-args=ARGS]="Additional arguments to pass to the container runtime (split at spaces)."
+)
+
+function main {
+
+    generic-arg-parse "$@" || return
+    generic-arg-help "$0" '[NIX_ARGS]' "$description" '' || return
+    generic-arg-verify 3 || return 3
+
+    if [[ ${args[verbose]:-} ]] ; then _set_x='set -x' ; fi
+
+    repo=$( dirname -- "$( cd "$( dirname -- "$0" )" ; pwd )" )
+    nixDir=${args[nix-dir]:-$repo/.nix/}
+    doInit=${args[init]:-} ; if [[ ! -e "$nixDir"/ ]] ; then doInit=1 ; fi
+    mkdir -p "$nixDir"/
+
+    cmd=( )
+#   if [[ ! ${args[runtime]:-} ]] && which podman &>/dev/null ; then
+#       args[runtime]=podman
+#   fi
+    cmd+=( "${args[runtime]:-docker}" run )
+
+    if [[ ${args[runtime]:-} == podman ]] ; then
+        echo '{"default":[{"type":"insecureAcceptAnything"}]}' > "$nixDir"/registry-policy.json # TODO: verify that podman still checks that the hash matches the one requested below
+        cmd+=( --signature-policy="$nixDir"/registry-policy.json )
+    fi
+
+    cmd+=( --rm )
+
+    if [[ ! ${args[no-privileged]:-} ]] ; then
+        cmd+=( --privileged )
+        if [[ ${args[runtime]:-} == podman ]] ; then
+            cmd+=( --group-add keep-groups )
+        fi
+        if [[ ! ${args[no-binfmt]:-} ]] && [[ $( ls /proc/sys/fs/binfmt_misc ) != *$otherArch* ]] ; then
+            hash=03a74d722a906b41e46a3790ec351636ca76d876e5c827f5c7740082ecfdf7e3 ; [[ $( uname --machine ) != x86_64 ]] || hash=6088cbd69c369178ffd6b68992f342c3a9d5c3cc619bbaa4bfe9a98cb23893d0
+            image= ; [[ ${args[runtime]:-} != podman ]] || image=docker:// ; image+=tonistiigi/binfmt@sha256:$hash
+            toAdd=arm64 ; [[ $( uname --machine ) == x86_64 ]] || toAdd=amd64
+            ( ${_set_x:-:} ; "${cmd[@]}" "$image" --install $toAdd ) || return
+        fi
+    else
+        if [[ ! ${args[no-kvm]:-} ]]; then
+            if [[ -r /dev/kvm && -w /dev/kvm ]] ; then
+                cmd+=( --device /dev/kvm )
+            else
+                echo "KVM is not available (for the current user). VMs will be slow." 1>&2
+            fi
+        fi
+    fi
+
+    if [[ ${#argv[@]} == 0 ]] ; then cmd+=( -i -t ) ; fi # interactive TTY
+
+    hash=7affae8af67e021b702e123b30a3710f8275cef004efc86d57d5cadff0d6fa56 ; if [[ $( uname --machine ) == x86_64 ]] ; then hash=251a921be086aa489705e31fa5bd59f2dadfa0824aa7f362728dfe264eb6a3d2 ; fi
+    image= ; if [[ ${args[runtime]:-} == podman ]] ; then image+=docker:// ; fi ; image+=nixos/nix@sha256:$hash
+
+    if [[ $doInit ]] ; then
+        ( ${_set_x:-:} ; "${cmd[@]}" --volume "$nixDir"/:/.nix/ "$image" bash -c 'cp -a /nix/* /.nix/' ) || return
+    fi
+
+    nixConf=$( mktemp ) ; trap "rm $nixConf" EXIT
+    echo '
+auto-optimise-store = true
+build-users-group = nixbld
+cores = 0
+experimental-features = recursive-nix impure-derivations nix-command flakes
+max-jobs = auto
+substituters = https://cache.nixos.org/
+system-features = nixos-test benchmark big-parallel kvm
+trusted-public-keys = cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY=
+'   >> "$nixConf"
+    if [[ ! ${args[no-binfmt]:-} ]] ; then
+        echo 'extra-platforms = '$otherArch'-linux' >> "$nixConf"
+    fi
+    if [[ ! ${args[no-privileged]:-} ]] ; then
+        echo 'sandbox = true' >> "$nixConf"
+        echo 'sandbox-fallback = false' >> "$nixConf"
+    fi
+
+    cmd+=( --volume "$repo"/:/repo/ --workdir /repo/ )
+    cmd+=( --volume "$nixDir"/:/nix/ )
+    cmd+=( --volume "$nixConf":/etc/nix/nix.conf:ro )
+    cmd+=( --tmpfs /tmp:mode=1777,exec,size=100% )
+    cmd+=( --ulimit nofile=1048576:1048576 ) # 1 million open files should do
+    if [[ ${args[pass-dev]:-} ]] ; then cmd+=( --volume /dev/:/dev/ ) ; fi # (this should be ok to do: https://github.com/moby/moby/pull/16639)
+    cmd+=( ${args[container-args]:-} )
+
+    #init='mkdir -p /.nix/{upper,work}/ || exit ; mount -t overlay -o lowerdir=/nix/,upperdir=/.nix/upper/,workdir=/.nix/upper/ none /nix/ || exit'
+
+    cmd+=( "$image" )
+
+#    cmd+=( bash -c )
+#    if [[ ${#argv[@]} == 0 ]] ; then
+#        cmd+=( "$init"' ; bash -l' )
+#    else
+#        cmd+=( "$init"' ; nix '"$( printf '%q ' "${argv[@]}" )" )
+#    fi
+
+    if [[ ${#argv[@]} == 0 ]] ; then
+        cmd+=( bash -l )
+    else
+        cmd+=( nix "${argv[@]}" )
+    fi
+
+    ( ${_set_x:-:} ; "${cmd[@]}" ) || return
+
+}
+
+
+############################################
+# copied from https://github.com/NiklasGollenstede/nix-wiplib/blob/c001ad7f51c0e2f7daba6ac7ff0c235fdaebe7ed/lib/setup-scripts/utils.sh
+############################################
+
+## Performs a simple and generic parsing of CLI arguments. Creates a global associative array »args« and a global normal array »argv«.
+#  Named options may be passed as »--name[=value]«, where »value« defaults to »1«, and are assigned to »args«.
+#  Everything else, or everything following the »--« argument, ends up as positional arguments in »argv«.
+#  Checking the validity of the parsed arguments is up to the caller.
+function generic-arg-parse { # ...
+    declare -g -A args=( ) ; declare -g -a argv=( ) # this ends up in the caller's scope
+    while (( "$#" )) ; do
+        if [[ $1 == -- ]] ; then shift ; argv+=( "$@" ) ; \return 0 ; fi
+        if [[ $1 == --* ]] ; then
+            if [[ $1 == *=* ]] ; then
+                local key=${1/=*/} ; args[${key/--/}]=${1/$key=/}
+            else args[${1/--/}]=1 ; fi
+        else argv+=( "$1" ) ; fi
+    shift ; done
+}
+
+## Shows the help text for a program and exits, if »--help« was passed as argument and parsed, or does nothing otherwise.
+#  Expects to be called between parsing and verifying the arguments.
+#  Uses »allowedArgs« for the list of the named arguments (the values are the descriptions).
+#  »name« should be the program name/path (usually »$0«), »args« the form/names of any positional arguments expected (e.g. »SOURCE... DEST«) and is included in the "Usage" description,
+#  »description« the introductory text shown before the "Usage", and »suffix« any text printed after the argument list.
+function generic-arg-help { # 1: name, 2?: args, 3?: description, 4?: suffix
+    if [[ ! ${args[help]:-} ]] ; then : ${allowedArgs[help]:=1} ; \return 0 ; fi
+    [[ ! ${3:-} ]] || echo "$3"
+    printf 'Usage:\n    %s [ARG[=value]]... [--] %s\n\nWhere »ARG« may be any of:\n' "$1" "${2:-}"
+    local name ; while IFS= read -u3 -r name ; do
+        printf '    %s\n        %s\n' "$name" "${allowedArgs[$name]}"
+    done 3< <( printf '%s\n' "${!allowedArgs[@]}" | LC_ALL=C sort )
+    printf '    %s\n        %s\n' "--help" "Do nothing but print this message and exit with success."
+    [[ ! ${4:-} ]] || echo "$4"
+    \exit 0
+}
+
+## Performs a basic verification of the named arguments passed by the user and parsed by »generic-arg-parse« against the names in »allowedArgs«.
+#  Entries in »allowedArgs« should have the form »[--name]="description"« for boolean flags, and »[--name=VAL]="description"« for string arguments.
+#  »description« is used by »generic-arg-help«. Boolean flags may only have the values »1« (as set by »generic-ags-parse« for flags without value) or be empty.
+#  »VAL« is purely nominal. Any argument passed that is not in »allowedArgs« raises an error.
+function generic-arg-verify { # 1: exitCode
+    local exitCode=${1:-1}
+    local names=' '"${!allowedArgs[@]}"
+    for name in "${!args[@]}" ; do
+        if [[ ${allowedArgs[--$name]:-} ]] ; then
+            if [[ ${args[$name]} == '' || ${args[$name]} == 1 ]] ; then continue ; fi
+            echo "Argument »--$name« should be a boolean, but its value is: ${args[$name]}" 1>&2 ; \return $exitCode
+        fi
+        if [[ $names == *' --'"$name"'='* || $names == *' --'"$name"'[='* ]] ; then continue ; fi
+        echo "Unexpected argument »--$name«.${allowedArgs[help]:+ Call with »--help« for a list of valid arguments.}" 1>&2 ; \return $exitCode
+    done
+}
+
+# /end copied
+
+main "$@"

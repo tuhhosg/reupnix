@@ -1,58 +1,45 @@
 
-# reCoNix: A Reconfigurable, Upgrade-Transactional, Fully-Reproducible Container Runtime for Multi-Purpose IoT Devices based on NixOS Linux
+# reUpNix: Reconfigurable and Updateable Embedded Systems
 
-This repository contains the practical contributions of my master thesis.
+This repository contains the practical contributions of (my master thesis) and the paper named above.
 The abstract:
 
-> This work presents mechanisms that make NixOS-Linux safer and more efficient as a multi-configuration container deployment system for IoT devices.
+> Managing the life cycle of an embedded Linux stack is difficult, as we have to integrate in-house and third-party services, prepare firmware images, and update the devices in the field.
+> Further, if device deployment is expensive (e.g. in space), our stack should support multi-mission setups to make the best use of our investment.
 >
-> From research satellites to manufacturing equipment there are many situations where embedded Linux systems need to perform different tasks at different times.
->
-> Embedded devices often have network access, but can not be accessed physically.
-> To cater to their changing tasks, the devices need to be updated over the network, and the network updates must never leave the devices in non-functioning states.
-> When the required functionality changes frequently, and updates are expensive to conduct, it is advantageous if devices can be reconfigured without needing to be updated from an external source.
->
-> Supplying remote updates safely in ways that can not render the device unusable and storing multiple device configurations concurrently is not a trivial task.
-> Approaches like A/B-partitioning and containerization are used in practice, but do not solve the combination of these two problems sufficiently well.
->
-> The NixOS Linux distribution is uniquely suited for granular service composition, deep system integration, parallel deployments, and reproducibility.
-> But NixOS also has properties that hinder its adoption in the field of IoT.
->
-> This thesis addresses these,
-> by suggesting a configuration model that deploys multiple systems to the same device, where each system is integrated with its own set of applications and containers;
-> by demonstrating a more efficient transfer mechanism for NixOS updates;
-> by building a bootloader configuration that can safely switch between concurrently installed systems and can be updated in an atomic transaction;
-> and by reducing NixOS's installation size significantly.
->
-> With these and a few future improvements in place, NixOS is a suitable bases for safely updatable, multi-configuration IoT devices.
+> With reUpNix, we propose a methodology based on NixOS that provides reproducible, updateable, and reconfigurable embedded Linux stacks.
+> For this, we identify the shortcomings of NixOS for use on embedded devices, reduce its basic installation size by up to 86 percent, and make system updates failure atomic and significantly smaller.
+> We also allow integration of third-party OCI images, which, due to fine-grained file deduplication, require up to 27 percent less on-disk space.
 
-The configuration model is implemented by the layout of the individual hosts, [`importMachineConfig`](./lib/misc.nix), and [`modules/target/specs.nix.md`](./modules/target/specs.nix.md). It is also sketched in the figure below.
-[`./overlays/nix-store-send.nix.md`](./overlays/nix-store-send.nix.md) implements the transfer mechanism, [`modules/hermetic-bootloader.nix.md`](./modules/hermetic-bootloader.nix.md) implements the bootloader configuration, and [`modules/minify.nix.md`](./modules/minify.nix.md) realizes the reduction in installation size.
+The differential update transfer mechanism `nix store sent` is implemented as part of Nix, and included here as one big [patch](./patches/nix-store-send.patch) ([`nix-store-send`](./overlays/nix-store-send.nix.md) implements a previous version).
 
-![](./docs/relations.drawio.svg)
+[`modules/hermetic-bootloader.nix.md`](./modules/hermetic-bootloader.nix.md) implements the bootloader configuration, and [`modules/minify.nix.md`](./modules/minify.nix.md) realizes the reduction in installation size.
+
+Container integration is implemented in [`modules/target/containers.nix.md`](modules/target/containers.nix.md), and the configuration model (Machine Config / System Profile) by the layout of the individual [hosts](./hosts/), [`lib/misc.nix#importMachineConfig`](./lib/misc.nix), and [`modules/target/specs.nix.md`](./modules/target/specs.nix.md).
 
 
 ## Repo Layout
 
 This is a nix flake repository, so [`./flake.nix`](./flake.nix) is the entry point and export mechanism for almost everything.
 
-[`./lib/`](./lib/) adds some additional library functions as `.my` to the default `nixpkgs.lib`. These get passed to all other files as `inputs.self.lib.my`.
+[`./lib/`](./lib/) adds some additional library functions as `.th` to the default `nixpkgs.lib`.
+These get passed to all other files as `inputs.self.lib.th`.
 
-[`./hosts/`](./hosts/) contains the main NixOS config modules for each host. Generally, there is one file for each host, but the [flake](./flake.nix) can be instructed to reuse the config for multiple hosts (in which case the module should probably interpret the `name` argument passed to it).
-Any `preface.*` options have to be set in the first sub-module in these files (`## Hardware` section).
+[`./hosts/`](./hosts/) contains the entry point NixOS config modules for each host(-type).
+The `default.nix` specifies the names of multiple `instances` of the host type. The ones with `-minimal` suffix have a standard set of [system minifications](./modules/minify.nix.md) applied, the `-baseline` ones are without minification, and the ones without suffix have some additional debugging bloat enabled.
+The `checks` (see below) may further modify the host definitions, but those modifications are not directly exposed as flake outputs.
 
 [`./modules/`](./modules/) contains NixOS configuration modules. Added options' names start with `th.` (unless they are meant as fixes to the existing options set).
-The modules are inactive by default, and are designed to be mostly independent from each other and the other things in this repo. Some do have dependencies on added or modified packages, other modules in the same directory, or just aren't very useful outside the overall system setup.
-[`./modules/default.nix`](./modules/default.nix) exports an attr set of the modules defined in the individual files, which is also what is exported as `flake#outputs.nixosModules` and merged as `flake#outputs.nixosModule`.
+[`./modules/default.nix`](./modules/default.nix) exports an attr set of the modules defined in the individual files, which is also what is exported as `flake#outputs.nixosModules` and merged as `flake#outputs.nixosModules.default`.
 
 [`./overlays/`](./overlays/) contains nixpkgs overlays. Some modify packages from `nixpkgs`, others add packages not in there (yet).
-[`./overlays/default.nix`](./overlays/default.nix) exports an attr set of the overlays defined in the individual files, which is also what is exported as `flake#outputs.overlays` and merged as `flake#outputs.overlay`. Additionally, the added or modified packages are exported as `flake#outputs.packages.<arch>.*`.
+[`./overlays/default.nix`](./overlays/default.nix) exports an attr set of the overlays defined in the individual files, which is also what is exported as `flake#outputs.overlays` and merged as `flake#outputs.overlays.default`. Additionally, the added or modified packages are exported as `flake#outputs.packages.<arch>.*`.
 
 [`./utils/`](./utils/) contains the installation and maintenance scripts/functions. These are wrapped by the flake to have access to variables describing a specific host, and thus (with few exceptions) shouldn't be called directly.
 See `apps` and `devShells` exported by the flake, plus the [installation](#installation--initial-setup) section below.
 
 [`./checks/`](./checks/) contains tests and evaluations. These are built as part of `nix flake check` and can individually be built and executed by running `nix run .#check:<name> -- <args>`.
-Some checks produce output files in [`./out`](./out/). These contain the data for publications and can be copied to the `data/` dir of the papers.
+Some checks produce output files in [`./out/`](./out/). These contain the data for publications and can be copied to the `data/` dir of the papers.
 
 
 ## Installation / Initial Setup
@@ -74,19 +61,9 @@ Technically, Nix (and most other code files) don't need to have any specific fil
 
 ## Notepad
 
-### `nix repl`
-
-```nix
-pkgs = import <nixpkgs> { }
-:lf . # load CWD's flake's outputs as variables
-pkgs = nixosConfigurations.target.pkgs
-lib = lib { inherit pkgs; inherit (pkgs) lib; }
-```
-
-
 ### Nix store deduplication
 
-To show the effect of deduplication on a `/nix/store/`, run:
+To measure the effectiveness of deduplication on a `/nix/store/`, run:
 ```bash
  is=0 ; would=0 ; while read perm links user group size rest ; do is=$(( is + size )) ; would=$(( would + (links - 1) * size )) ; done < <( \ls -Al /nix/store/.links | tail -n +2 ) ; echo "Actual size: $is ; without dedup: $would ; gain: $( bc <<< "scale=2 ; $would/$is" )"
 ```

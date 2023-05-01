@@ -20,9 +20,11 @@ dirname: inputs: pkgs: let
 
     base-minimal  = override (unpinInputs inputs.self.nixosConfigurations."old:x64-minimal") {
         nixpkgs.overlays = [ (final: prev: { redis = prev.redis.overrideAttrs (old: { doCheck = false; }); }) ];
+        services.httpd.adminAddr = "admin@example.org"; # at least one of the »nixos« service definitions needs this (but I don't know which; whatever)
     };
     base-baseline = override (unpinInputs inputs.self.nixosConfigurations."old:x64-baseline") {
         nixpkgs.overlays = [ (final: prev: { redis = prev.redis.overrideAttrs (old: { doCheck = false; }); }) ];
+        services.httpd.adminAddr = "admin@example.org"; # at least one of the »nixos« service definitions needs this (but I don't know which; whatever)
     };
     fixUser = user: id: { users.users.${user} = { isSystemUser = true; uid = id; group = lib.mkDefault user; }; users.groups.${user}.gid = id; };
 
@@ -162,17 +164,12 @@ function sum-size {
     done < <( cut -f 1 ) ; echo $sum
 }
 
-echo -n "\addplot coordinates {" | tee apparent layered store >/dev/null # plot 1
-echo -n "\addplot coordinates {" | tee imgMax imgMin nixMini nixBase >/dev/null # plot 2
-
-
-## Table 1: container image versions and types
+## container image versions and types
 echo "name,version,variants" >$out/oci-variants.csv
-${lib.concatStringsSep "\n" (lib.mapAttrsToList (name: vars: ''echo "${name},${tag-version vars.default},${tag-suffix vars.default}${if vars?alpine then " alpine" else ""}${if vars?slim then " ${tag-suffix vars.slim}" else ""}${if vars?alt then " alt=${tag-suffix vars.alt}" else ""} \\\\" >>$out/oci-variants.csv'') images)}
+${lib.concatStringsSep "\n" (lib.mapAttrsToList (name: vars: ''echo "${name},${tag-version vars.default},${tag-suffix vars.default}${if vars?alpine then " alpine" else ""}${if vars?slim then " ${tag-suffix vars.slim}" else ""}${if vars?alt then " alt=${tag-suffix vars.alt}" else ""}" >>$out/oci-variants.csv'') images)}
 
 
-## Table 2: container image and NixOS install sizes
-## Plot 2: table 2 as plot
+## container image and NixOS install sizes
 baseMinSize=${du (toplevel base-minimal)}
 baseBasSize=${du (toplevel base-baseline)}
 echo "variant,service,size" >$out/oci-individual.csv
@@ -187,24 +184,19 @@ ${lib.concatStringsSep "\n" (lib.mapAttrsToList (name: vars: ''
     ${if vars?nixos then ''
         nixMini=$(( ${du (toplevel (override base-minimal  vars.nixos))} - $baseMinSize ))
         nixBase=$(( ${du (toplevel (override base-baseline vars.nixos))} - $baseBasSize ))
-        echo -n " (${name},$imgMax)" >>imgMax ; echo -n " (${name},$imgMin)" >>imgMin ; echo -n " (${name}2,$nixMini)" >>nixMini ; echo -n " (${name}2,$nixBase)" >>nixBase
         echo "reconix diff,${name},$nixMini" >>$out/oci-individual.csv
-        echo "nixos diff,${name},nixBase" >>$out/oci-individual.csv
+        echo "nixos diff,${name},$nixBase" >>$out/oci-individual.csv
     '' else ""}
     echo "largest,${name},$imgMax" >>$out/oci-individual.csv
-    echo "smallest,${name},imgMix" >>$out/oci-individual.csv
+    echo "smallest,${name},$imgMin" >>$out/oci-individual.csv
 '') images)}
 
-''; disabled = '' # stuff that could be appended to »script«, but that we currently don't use
 
-echo "minimal  NixOS with all apps:               $(( ${du (toplevel (override base-minimal  { imports = map (_:_.nixos or { }) (lib.attrValues images); }))} - $baseMinSize ))"
-${if false then ''echo "minimal  NixOS with all apps in containers: $(( ${du (toplevel (override base-minimal  { imports = lib.mapAttrsToList (name: vars: if vars?nixos then { th.target.containers.containers.${name}.modules = [ vars.nixos ]; } else { }) images; }))} - $baseMinSize ))"'' else ""}
-echo "baseline NixOS with all apps:               $(( ${du (toplevel (override base-baseline { imports = map (_:_.nixos or { }) (lib.attrValues images); }))} - $baseBasSize ))"
-
+## merged container image sizes
+echo "Base Image,Uncompressed,Shared Layers,Shared Files" >$out/oci-combined.csv
 ${lib.concatMapStringsSep "\n" (series: ''
 
     rm -f totals layers uniq
-    ( ${frame "echo Image Type ${series}"} ) 1>&2
     ${lib.concatMapStringsSep "\n" (image: ''
         self=$( <${image.info}/layers sum-size )
         #echo "${image.name}: $self"
@@ -213,30 +205,15 @@ ${lib.concatMapStringsSep "\n" (series: ''
     '') sets.${series}}
     <layers LC_ALL=C sort -k2 | uniq -f 1 >uniq
 
-    ## Plot 1: combined container storage consumption
-    echo -n " (${series},$( <totals sum-size ))" >>apparent
-    echo -n " (${series},$( <uniq sum-size ))" >>layered
-    echo -n " (${series},${du (lib.concatStringsSep " " sets.${series})})" >>store
-
-    ( ## stderr: more detailed image statistics
-        #( set -x ; cat layers )
-        #( set -x ; <layers LC_ALL=C sort -k2 | uniq -f1  )
-        #( set -x ; cat uniq )
-        #( set -x ; cat totals )
-
-        echo "layers total:  $( <totals sum-size )"
-        echo "layers merged: $( <uniq sum-size )"
-        echo "store merged:  ${du (lib.concatStringsSep " " sets.${series})}"
-    ) 1>&2
+    echo "${series},$( <totals sum-size ),$( <uniq sum-size ),${du (lib.concatStringsSep " " sets.${series})}" >>$out/oci-combined.csv
 
 '') [ "default" "alt" "slim" "bullseye" "alpine" "alpine+" ]}
 
-echo " };" | tee -a apparent layered store >/dev/null
-cat apparent layered store >$out/fig-oci-combined.tex
-echo '\legend{without sharing, with shared layers, with shared files}' >>$out/fig-oci-combined.tex
 
-echo " };" | tee -a imgMax imgMin nixMini nixBase >/dev/null
-cat imgMax imgMin nixMini nixBase >$out/fig-container-individual.tex
-echo '\legend{largest image, smallest image, diff minimal NixOS, diff baseline NixOS}' >>$out/fig-container-individual.tex
+''; disabled = '' # stuff that could be appended to »script«, but that we currently don't use
+
+echo "minimal  NixOS with all apps:               $(( ${du (toplevel (override base-minimal  { imports = map (_:_.nixos or { }) (lib.attrValues images); }))} - $baseMinSize ))"
+${if false then ''echo "minimal  NixOS with all apps in containers: $(( ${du (toplevel (override base-minimal { imports = lib.mapAttrsToList (name: vars: if vars?nixos then { th.target.containers.containers.${name}.modules = [ vars.nixos ]; } else { }) images; }))} - $baseMinSize ))"'' else ""}
+echo "baseline NixOS with all apps:               $(( ${du (toplevel (override base-baseline { imports = map (_:_.nixos or { }) (lib.attrValues images); }))} - $baseBasSize ))"
 
 ''; }

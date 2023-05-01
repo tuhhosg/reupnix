@@ -27,7 +27,7 @@ in { imports = [ ({ ## Hardware
     wip.fs.disks.devices.primary.size = "256M"; wip.fs.disks.devices.primary.alignment = 8;
     th.hermetic-bootloader.slots.size = lib.mkForce "${toString (32 + 1)}M"; # VBox EFI only supports FAT32
     th.target.fs.dataSize = "1K"; fileSystems."/data" = lib.mkForce { fsType = "tmpfs"; device = "tmpfs"; }; # don't really need /data
-    #fileSystems."/system".formatOptions = lib.mkForce "-E nodiscard"; # (remove »-O inline_data«, which does not work for too small inodes used as a consequence of the tiny FS size)
+    #fileSystems."/system".formatOptions = lib.mkForce "-E nodiscard"; # (remove »-O inline_data«, which does not work for too small inodes used as a consequence of the tiny FS size, but irrelevant now that we use a fixed inode size)
 
 
 }) (lib.mkIf true { ## Temporary Test Stuff

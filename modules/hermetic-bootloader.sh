@@ -116,17 +116,21 @@ function write-to-fs {( set -eu ; # 1: tree, 2: root, 3?: selfRef
     fi
 )}
 
-function write-boot-partition {( set -eu ; # 1: tree, 2: blockDev, 3: label, 4?: selfRef
+function write-boot-partition {( set -u # 1: tree, 2: blockDev, 3: label, 4?: selfRef
     tree=$1 ; blockDev=$2 ; label=$3 ; selfRef=${4:-}
     # TODO: is it possible to just "flash" an empty FAT32? The label can be replaced with dd ...
-    @{pkgs.dosfstools}/bin/mkfs.vfat -n "$label" "$blockDev" &1>/dev/null || @{pkgs.dosfstools}/bin/mkfs.vfat -n "$label" "$blockDev"
-    root=$( @{pkgs.coreutils}/bin/mktemp -d ) ; mount "$blockDev" $root ; trap "umount $root ; @{pkgs.coreutils}/bin/rmdir $root" EXIT
-    write-to-fs $tree "$root" "$selfRef"
+    @{pkgs.dosfstools}/bin/mkfs.vfat -n "$label" "$blockDev" &1>/dev/null || @{pkgs.dosfstools}/bin/mkfs.vfat -n "$label" "$blockDev" || exit
+    root=$( @{pkgs.coreutils}/bin/mktemp -d ) ; mount "$blockDev" $root ; trap "umount $root ; @{pkgs.coreutils}/bin/rmdir $root" EXIT || exit
+    write-to-fs $tree "$root" "$selfRef" || exit
 )}
 
-function get-parent-disk {( set -eu ; # 1: partition
+function get-parent-disk {( set -u # 1: partition
     export PATH=@{pkgs.coreutils}/bin
-    echo /dev/$( basename "$( readlink -f /sys/class/block/"$( basename "$( realpath "$1" )" )"/.. )" )
+    arg=$( realpath "$1" ) || exit
+    arg=$( basename "$arg" ) || exit
+    arg=$( readlink -f /sys/class/block/"$arg"/.. ) || exit
+    arg=$( basename "$arg" ) || exit
+    echo /dev/"$arg"
 )}
 
 function activate-as-slot {( set -eu ; # 1: tree, 2: index, 3: label, 4?: selfRef

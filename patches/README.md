@@ -4,7 +4,7 @@
 ... for `nixpkgs` or programs therein.
 
 A patch `<name>-*.patch` is generally for the open source software `<name>` which is added/modified by the nixpkgs overlay in `../overlays/<name>.nix.md`.
-Patches for `nixpkgs` are applied in `../flake.nix`.
+Patches for `nixpkgs` are applied in [`../flake.nix`](../flake.nix).
 
 To create/"commit" a patch of the current directory vs its latest commit:
 ```bash

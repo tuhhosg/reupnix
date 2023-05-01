@@ -303,6 +303,7 @@ in {
             getGid = g: toString (lib.wip.ifNull g.gid (config.ids.gids.${g.name} or (throw "Group ${g.name} has no GID")));
             defaultMode = "symlink"; # "644" # (not sure whether these files should be writable)
         in {
+            system.activationScripts.users = lib.mkForce "";
             users.mutableUsers = false; assertions = [ { assertion = config.users.mutableUsers == false; message = "Static user generation is incompatible with »users.mutableUsers = true«."; } ];
 
             # Statically generate user files:

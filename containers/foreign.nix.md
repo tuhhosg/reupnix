@@ -2,6 +2,10 @@
 
 # Non-NixOS HTTP Container
 
+TODO: this is super outdated and uses Nix-antipatterns.
+See `mqttOciConfig` in [](../checks/nix_store_send.nix.md) for a working example of including ICO containers.
+
+
 ## Implementation
 
 ```nix

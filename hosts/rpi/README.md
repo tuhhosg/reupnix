@@ -19,8 +19,6 @@ To see the serial console during boot, connect the RXD pin of a 3.3V UART adapte
 nix-shell -p tio --run 'tio /dev/ttyUSBx' # (tio uses the correct settings by default)
 ```
 
-**NOTE**: Booting the PI currently stalls multiple times if an HDMI screen is connected (so don't connect one).
-
 
 ### Other Boot Media
 

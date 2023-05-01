@@ -1,7 +1,9 @@
 dirname: inputs@{ self, nixpkgs, ...}: pkgs: let
-    inherit (inputs.self) lib;
-    scripts = self.lib.wip.importFilteredFlattened dirname inputs { except = [ "default" ]; };
-    test = lib.th.testing pkgs;
+    inherit (inputs.self) lib; test = lib.th.testing pkgs;
+    #imports = self.lib.wip.importFilteredFlattened dirname inputs { except = [ "default" ]; };
+    imports = self.lib.wip.importFilteredFlattened dirname inputs { except = if (pkgs.system == "aarch64-linux") then [ # For some reason, importing the files (even when not intending to evaluate anything defined in them), some import-from-derivation happens, where the derivations are x64 ones that fail to build on aarch64 (even with qemu binfmt registration). Strange stuff. So let's just disable it.
+        "container-sizes" "default"  "demo" /* "install-size" */ "nix-copy-update" /* "reconfig-time" */ "nix_store_send" "stream-rsync" "stream-size" "stream-update" "test" "update-glibc"
+    ] else [ "default" ]; };
     wrap = script: ''
         set -eu
         PATH=${lib.makeBinPath (lib.unique (map (p: p.outPath) (lib.filter lib.isDerivation pkgs.stdenv.allowedRequisites)))}
@@ -15,13 +17,20 @@ dirname: inputs@{ self, nixpkgs, ...}: pkgs: let
         unset SUDO_USER ; generic-arg-parse "$@"
         ( trap - exit
             if [[ ''${args[debug]:-} ]] ; then set -x ; fi
-            ${let thing = script pkgs; in if builtins.isAttrs thing then thing.script else thing}
+            ${script}
         )
     '';
-    checks = lib.mapAttrs (name: script: (pkgs.writeShellScript "check-${name}.sh" (wrap script)).overrideAttrs (old: {
-        passthru = (old.passthru or { }) // (let thing = script pkgs; in if builtins.isAttrs thing then thing else { script = thing; });
-    })) scripts;
-    packages = lib.mapAttrs (name: script: pkgs.writeShellScriptBin "check-${name}.sh" (wrap script)) scripts;
+    checks = let
+        mkCheck = name: script: attrs: (pkgs.writeShellScript "check-${name}.sh" (wrap script)).overrideAttrs (old: {
+            passthru = (old.passthru or { }) // attrs;
+        });
+    in lib.wip.mapMergeUnique (name: import': let import = import' pkgs; in if (builtins.isString import) then (
+        { ${name} = mkCheck name import { script = import; }; }
+    ) else if (builtins.isString (import.script or null)) then (
+        { ${name} = mkCheck name import.script import; }
+    ) else (lib.wip.mapMerge (name': script:
+        { "${name}-${name'}" = mkCheck name script import; }
+    ) import.scripts)) imports;
     apps = (lib.wip.mapMerge (k: v: { "check:${k}" = { type = "app"; program = "${v}"; }; }) checks) // {
         "check:all" = { type = "app"; program = "${pkgs.writeShellScript "check-all.sh" ''
             failed=0 ; warning='"!!!!!!!!!!!!!!!!!!!!!!!'
@@ -31,5 +40,19 @@ dirname: inputs@{ self, nixpkgs, ...}: pkgs: let
             '') (builtins.removeAttrs checks [ "demo" "test" ])))}
             exit $failed
         ''}"; };
-    };
-in { inherit checks packages apps; }
+    } // (let inherit (pkgs) system; in let
+        pkgs = import inputs.latest-nixpkgs { inherit system; };
+        mkPipPackage = name: version: sha256: deps: extra: pkgs.python3Packages.buildPythonPackage ({
+            pname = name; version = version; propagatedBuildInputs = deps;
+            src = pkgs.python3Packages.fetchPypi { pname = name; version = version; sha256 = sha256; };
+        } // extra);
+        python3 = pkgs.buildPackages.python3.withPackages (pip3: (builtins.attrValues rec {
+            inherit (pip3) ipykernel python-magic numpy pandas patsy plotnine mizani matplotlib setuptools statsmodels;
+            plydata = mkPipPackage "plydata" "0.4.3" "Lq2LbAzy+fSDtvAXAmeJg5Qlg466hAsWDXRkOVap+xI=" [ pip3.pandas pip3.pytest ] { };
+            versuchung = mkPipPackage "versuchung" "1.4.1" "iaBuJczQiJHLL6m8yh3RXFMrG9astbwIT+V/sWuUQW4=" [ pip3.papermill ] { doCheck = false; };
+            osgpy = mkPipPackage "osgpy" "0.1.3" "ogEtmqOYKJ+7U6QE63qVR8Z8fofBApThu66QsbYpLio=" [ pip3.pandas plotnine plydata versuchung ] { };
+        }));
+    in lib.wip.mapMerge (name: { "eval:${name}" = rec { type = "app"; derivation = pkgs.writeShellScript "${name}.py.sh" ''
+        exec ${python3}/bin/python3 ${dirname}/../lib/data/${name}.py ./out/
+    ''; program = "${derivation}"; }; }) [ "dref" "fig-oci_combined" "fig-reboot" "fig-update-size" ]);
+in { inherit checks apps; packages = checks; }
