@@ -1,0 +1,18 @@
+cff-version: 1.2.0
+message: If you use this software, please cite it using these metadata.
+title: 'reUpNix: Reconfigurable and Updateable Embedded Systems'
+authors:
+  - given-names: Niklas
+    family-names: Gollenstede
+    orcid: https://orcid.org/0009-0004-9395-7318
+  - given-names: Christian
+    family-names: Dietrich
+    orcid: https://orcid.org/0000-0001-9258-0513
+version: lctes23-crv
+date-released: 2023-05-12
+identifiers:
+  - description: Artifact reference for the LCTES 2023 publication.
+    type: doi
+    value: 10.5281/zenodo.7929610
+license: MIT
+repository-code: https://github.com/tuhhosg/reupnix

@@ -17,7 +17,7 @@ The differential update transfer mechanism `nix store sent` is implemented as pa
 
 Container integration is implemented in [`modules/target/containers.nix.md`](./modules/target/containers.nix.md), and the configuration model (Machine Config / System Profile) by the layout of the individual [hosts](./hosts/), [`lib/misc.nix#importMachineConfig`](./lib/misc.nix), and [`modules/target/specs.nix.md`](./modules/target/specs.nix.md).
 
-The description for the LCTES 2023 Artifact Submission can be found in [`utils/lctes23-artifact`](./utils/lctes23-artifact).
+The description for the LCTES 2023 Artifact Submission can be found in [`utils/lctes23-artifact`](./utils/lctes23-artifact). <sub><sub>[![DOI](https://zenodo.org/badge/639381697.svg)](https://zenodo.org/badge/latestdoi/639381697)</sub></sub>
 
 
 ## Repo Layout
