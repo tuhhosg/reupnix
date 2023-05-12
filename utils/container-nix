@@ -1,20 +1,22 @@
 #!/usr/bin/env -S bash -u -o pipefail
 
+repo=$( dirname -- "$( cd "$( dirname -- "$0" )" ; pwd )" )
+otherArch=x86_64 ; [[ $( uname --machine ) != x86_64 ]] || otherArch=aarch64
+
 description="Provides a way of running »nix« commands without installing Nix, by running the commands inside a container.
 It probably makes sense to create an »alias nix='./utils/container-nix --options=... --'« and use that as »nix«.
 When called without »NIX_ARGS«, this opens a bash shell in the container, with »nix« available directly.
 Also, anything executed by »nix run« will run inside the container, and »result« symlinks are resolvable inside the container (outside, the leading »/nix« has to be replaced with the value of »--nix-dir«).
-This repo is volume-mounted to the CWD in the container (»/repo«).
+This repo ($repo) is volume-mounted to the CWD in the container (»/repo«).
 "
-otherArch=x86_64 ; [[ $( uname --machine ) != x86_64 ]] || otherArch=aarch64
 declare -g -A allowedArgs=(
         [--runtime=BIN]="Path to or binary name of the container runtime to use. Defaults to »docker«. »podman« may or may not work as well."
-       [--nix-dir=PATH]="Path to create and/or use the »/nix/« dir at. Defaults to »../.nix/« (relative to this script)."
+       [--nix-dir=PATH]="Path to create and/or use the »/nix/« dir at. Defaults to »$( dirname "$repo" )/.nix/«."
                [--init]="Whether to force initialization of the »--nix-dir« dir. Enabled implicitly only if »--nix-dir« does not exist yet. Should not be enabled if »--nix-dir« has been initialized before."
       [--no-privileged]="Don't run the container as »--privileged«. This probably breaks things."
            [--pass-dev]="Pass the host's »/dev/« into the container. Otherwise, installations will happen in qemu VMs."
              [--no-kvm]="With »--no-privileged«, also do not pass in »/dev/kvm«. VMs will be very slow. May be incompatible with »--pass-dev«."
-          [--no-binfmt]="Do not create a (temporary but system-wide) »binfmt_misc« registration for »$otherArch« (if there is one whose name contains that word yet). This requires the container to run as »--privileged« and »root«. (Uses <https://github.com/tonistiigi/binfmt>.)"
+          [--no-binfmt]="Do not create a (temporary but system-wide) »binfmt_misc« registration for »$otherArch« (if there is none whose name contains that word yet). This requires the container to run as »--privileged« and »root«. (Uses <https://github.com/tonistiigi/binfmt>.)"
             [--verbose]="Whether to print out the container commands before running them."
 [--container-args=ARGS]="Additional arguments to pass to the container runtime (split at spaces)."
 )
@@ -27,8 +29,7 @@ function main {
 
     if [[ ${args[verbose]:-} ]] ; then _set_x='set -x' ; fi
 
-    repo=$( dirname -- "$( cd "$( dirname -- "$0" )" ; pwd )" )
-    nixDir=${args[nix-dir]:-$repo/.nix/}
+    nixDir=${args[nix-dir]:-$( dirname "$repo" )/.nix/}
     doInit=${args[init]:-} ; if [[ ! -e "$nixDir"/ ]] ; then doInit=1 ; fi
     mkdir -p "$nixDir"/
 

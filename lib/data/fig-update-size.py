@@ -16,12 +16,12 @@ L = labeller(cols=lambda x: data.facet_labels[x])
 
 print(set(data.update_nix.chunkingType.astype('category')))
 
-cb2_red = ['#bdc9e1','#74a9cf','']
-cb2_blue = ['#fdcc8a','#fc8d59','#d7301f']
-
 cat = data.update_nix_cat
 
-df: pd.DataFrame = (data.update_nix
+df = data.update_nix
+df = df[~((df.systemType == 'withOci') & (df.before == 'old') & (df.after == 'app') & (df.originalChunkingType == 'bsd-nar+none'))] # exclude this, as it fails sporadically
+
+df: pd.DataFrame = (df
       >> define(
           systemType=mapvalues('systemType',
                                'minimal noKernel withMqtt withOci'.split(),
@@ -67,4 +67,3 @@ transfer = (ggplot(df, aes(x='chunkingType', y='transferWeight', fill='chunkingT
 
 #save_as_pdf_pages([transfer], data._dir / __import__('os').path.basename(__file__).replace('.py', '.pdf'))
 save_as_pdf_pages([transfer], outDir / 'update-size.pdf')
-

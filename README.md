@@ -1,7 +1,7 @@
 
 # reUpNix: Reconfigurable and Updateable Embedded Systems
 
-This repository contains the practical contributions of (my master thesis) and the paper named above.
+This repository contains the practical contributions of (my master thesis and) the [paper named above](https://doi.org/10.1145/3589610.3596273).
 The abstract:
 
 > Managing the life cycle of an embedded Linux stack is difficult, as we have to integrate in-house and third-party services, prepare firmware images, and update the devices in the field.
@@ -11,11 +11,13 @@ The abstract:
 > For this, we identify the shortcomings of NixOS for use on embedded devices, reduce its basic installation size by up to 86 percent, and make system updates failure atomic and significantly smaller.
 > We also allow integration of third-party OCI images, which, due to fine-grained file deduplication, require up to 27 percent less on-disk space.
 
-The differential update transfer mechanism `nix store sent` is implemented as part of Nix, and included here as one big [patch](./patches/nix-store-send.patch) ([`nix-store-send`](./overlays/nix-store-send.nix.md) implements a previous version).
+The differential update transfer mechanism `nix store sent` is implemented as part of Nix, and is included here as one big [patch](./patches/nix-store-send.patch) ([`nix-store-send`](./overlays/nix-store-send.nix.md) implements a previous version).
 
 [`modules/hermetic-bootloader.nix.md`](./modules/hermetic-bootloader.nix.md) implements the bootloader configuration, and [`modules/minify.nix.md`](./modules/minify.nix.md) realizes the reduction in installation size.
 
-Container integration is implemented in [`modules/target/containers.nix.md`](modules/target/containers.nix.md), and the configuration model (Machine Config / System Profile) by the layout of the individual [hosts](./hosts/), [`lib/misc.nix#importMachineConfig`](./lib/misc.nix), and [`modules/target/specs.nix.md`](./modules/target/specs.nix.md).
+Container integration is implemented in [`modules/target/containers.nix.md`](./modules/target/containers.nix.md), and the configuration model (Machine Config / System Profile) by the layout of the individual [hosts](./hosts/), [`lib/misc.nix#importMachineConfig`](./lib/misc.nix), and [`modules/target/specs.nix.md`](./modules/target/specs.nix.md).
+
+The description for the LCTES 2023 Artifact Submission can be found in [`utils/lctes23-artifact`](./utils/lctes23-artifact).
 
 
 ## Repo Layout
@@ -36,15 +38,16 @@ The `checks` (see below) may further modify the host definitions, but those modi
 [`./overlays/default.nix`](./overlays/default.nix) exports an attr set of the overlays defined in the individual files, which is also what is exported as `flake#outputs.overlays` and merged as `flake#outputs.overlays.default`. Additionally, the added or modified packages are exported as `flake#outputs.packages.<arch>.*`.
 
 [`./utils/`](./utils/) contains the installation and maintenance scripts/functions. These are wrapped by the flake to have access to variables describing a specific host, and thus (with few exceptions) shouldn't be called directly.
-See `apps` and `devShells` exported by the flake, plus the [installation](#installation--initial-setup) section below.
+See `apps` and `devShells` exported by the flake, plus the [installation](#host-installation--initial-setup) section below.
 
 [`./checks/`](./checks/) contains tests and evaluations. These are built as part of `nix flake check` and can individually be built and executed by running `nix run .#check:<name> -- <args>`.
 Some checks produce output files in [`./out/`](./out/). These contain the data for publications and can be copied to the `data/` dir of the papers.
 
 
-## Installation / Initial Setup
+## Host Installation / Initial Setup
 
-The installation is completely scripted and should work on any Linux with KVM enabled (or root access), and nix installed for the current user (or root).
+The installation of the configured hosts is completely scripted and should work on any Linux with KVM enabled (or root access), and nix installed for the current user (or root).
+See [WibLib's `install-system`](https://github.com/NiklasGollenstede/nix-wiplib/blob/master/lib/setup-scripts/README.md#install-system-documentation) for more details.
 
 
 ## Concepts
@@ -67,3 +70,14 @@ To measure the effectiveness of deduplication on a `/nix/store/`, run:
 ```bash
  is=0 ; would=0 ; while read perm links user group size rest ; do is=$(( is + size )) ; would=$(( would + (links - 1) * size )) ; done < <( \ls -Al /nix/store/.links | tail -n +2 ) ; echo "Actual size: $is ; without dedup: $would ; gain: $( bc <<< "scale=2 ; $would/$is" )"
 ```
+
+
+## Authors / License
+
+All files in this repository ([`reupnix`](https://github.com/tuhhosg/reupnix)) (except LICENSE) are authored/created by the authors of this repository, and are copyright 2023 [Christian Dietrich](https://github.com/stettberger) (`lib/data/*`) and copyright 2022 - 2023 [Niklas Gollenstede](https://github.com/NiklasGollenstede) (the rest).
+
+See [`patches/README.md#license`](./patches/README.md#license) for the licensing of the included [patches](./patches/).
+All other parts of this software may be used under the terms of the MIT license, as detailed in [`./LICENSE`](./LICENSE).
+
+This license applies to the files in this repository only.
+Any external packages are built from sources that have their own licenses, which should be the ones indicated in the package's metadata.

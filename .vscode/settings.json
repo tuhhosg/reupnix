@@ -13,6 +13,7 @@
 		"ahci", // kmod
 		"alsa", // program
 		"amdgpu", // kmod
+		"lctes", // abbr (Languages, Compilers, Tools and Theory of Embedded Systems)
 		"analogix", // kmod
 		"anyprot", // option
 		"askpass", // program
@@ -212,6 +213,7 @@
 		"mdns", // abbr
 		"mgmt", // abbr (management)
 		"mindepth", // cli arg (find)
+		"minifications", // word
 		"minix", // kmod / file system
 		"mipi", // kmod
 		"mkdir", // program / function
@@ -240,6 +242,7 @@
 		"niklas", // name
 		"nilfs2", // kmod / file system
 		"NIX_SSHOPTS", // nix
+		"nixbld", // option
 		"NIXCFG", // abbr
 		"nixos", // (duh)
 		"nixpkgs", // nix
@@ -249,6 +252,7 @@
 		"nodev", // mount option
 		"nodiscard", // cli arg
 		"nofail", // cli arg
+		"nofile", // option
 		"nogroup", // linux
 		"nologin", // function / program
 		"noninteractive", // cli arg
@@ -312,6 +316,7 @@
 		"readline", // package
 		"realpath", // program / function
 		"reconix", // this repo
+		"reupnix", // this repo
 		"redistributable", // word
 		"resolv", // file name
 		"resolvconf", // program
@@ -356,6 +361,7 @@
 		"stringification", // word (the act of turning something into a string)
 		"sublist", // nix function
 		"subshell", // bash
+		"substituters", // option
 		"suspendable", // word
 		"swapoff", // program / function
 		"swapon", // program / function
@@ -381,6 +387,7 @@
 		"TMPDIR", // env var
 		"tmpfiles", // systemd
 		"tmpfs", // linux
+		"tonistiigi", // name
 		"toplevel", // nix
 		"toplevels", // plural
 		"traefik", // package
@@ -405,6 +412,7 @@
 		"unencrypted", // ~= not encrypted / decrypted
 		"unixtools", // package
 		"unmanaged", // word
+		"updateable", // word
 		"upower", // program
 		"upperdir", // mount overlay option
 		"urandom", // linux
