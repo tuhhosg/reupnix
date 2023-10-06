@@ -118,10 +118,10 @@ Delete all store components listed in the list of added store components (which,
 ```nix
 #*/# end of MarkDown, beginning of NixPkgs overlay:
 dirname: inputs: final: prev: let
-    inherit (final) pkgs; inherit (inputs.self) lib;
-    genericArgParse = lib.wip.extractBashFunction (builtins.readFile lib.wip.setup-scripts.utils) "generic-arg-parse";
-    genericArgHelp = lib.wip.extractBashFunction (builtins.readFile lib.wip.setup-scripts.utils) "generic-arg-help";
-    genericArgVerify = lib.wip.extractBashFunction (builtins.readFile lib.wip.setup-scripts.utils) "generic-arg-verify";
+    inherit (final) pkgs; lib = inputs.self.lib.__internal__;
+    genericArgParse = lib.fun.extractBashFunction (builtins.readFile lib.inst.setup-scripts.utils) "generic-arg-parse";
+    genericArgHelp = lib.fun.extractBashFunction (builtins.readFile lib.inst.setup-scripts.utils) "generic-arg-help";
+    genericArgVerify = lib.fun.extractBashFunction (builtins.readFile lib.inst.setup-scripts.utils) "generic-arg-verify";
 in {
 
     nix-store-send = pkgs.substituteAll {

@@ -23,7 +23,7 @@ How much that matters depends on the number of files and the average size of the
 ```nix
 #*/# end of MarkDown, beginning of Nix test:
 dirname: inputs: pkgs: let
-    inherit (inputs.self) lib; test = lib.th.testing pkgs;
+    lib = inputs.self.lib.__internal__; test = lib.th.testing pkgs;
 
     remove-containers = system: test.override system { # »override« (for some reason) does not affect containers, and targeting it explicitly also doesn't work ...
         specialisation.test1.configuration.th.target.containers.containers = lib.mkForce { };

@@ -11,7 +11,7 @@ The abstract:
 > For this, we identify the shortcomings of NixOS for use on embedded devices, reduce its basic installation size by up to 86 percent, and make system updates failure atomic and significantly smaller.
 > We also allow integration of third-party OCI images, which, due to fine-grained file deduplication, require up to 27 percent less on-disk space.
 
-The differential update transfer mechanism `nix store sent` is implemented as part of Nix, and is included here as one big [patch](./patches/nix-store-send.patch) ([`nix-store-send`](./overlays/nix-store-send.nix.md) implements a previous version).
+The differential update transfer mechanism `nix store sent` is implemented as part of Nix, and is included here as one big [patch](./patches/nix-store-send.patch) applied to the "`nix`" [flake input](./flake.nix) ([`nix-store-send`](./overlays/nix-store-send.nix.md) implements a previous version).
 
 [`modules/hermetic-bootloader.nix.md`](./modules/hermetic-bootloader.nix.md) implements the bootloader configuration, and [`modules/minify.nix.md`](./modules/minify.nix.md) realizes the reduction in installation size.
 

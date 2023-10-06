@@ -26,7 +26,7 @@ More abstractions to come ...
 
 ```nix
 #*/# end of MarkDown, beginning of NixOS module:
-dirname: inputs: specialArgs@{ config, pkgs, lib, nodes, utils, extraModules, ... }: let inherit (inputs.self) lib; in let
+dirname: inputs: specialArgs@{ config, pkgs, lib, nodes, utils, extraModules, ... }: let lib = inputs.self.lib.__internal__; in let
     cfg = config.th.target.containers;
     hostConfig = config;
 
@@ -35,7 +35,7 @@ dirname: inputs: specialArgs@{ config, pkgs, lib, nodes, utils, extraModules, ..
         merge = loc: defs: let
             val = lib.mergeOneOption loc defs;
         in if !(builtins.isString val) || builtins.hasContext val then val else (let
-            split = lib.wip.ifNull (builtins.match ''^(.*?):(sha256-.*)$'' val) (throw "Literal store path ${val} must be followed by :sha256-...");
+            split = lib.fun.ifNull (builtins.match ''^(.*?):(sha256-.*)$'' val) (throw "Literal store path ${val} must be followed by :sha256-...");
             path = (builtins.elemAt split 0); sha256 = (builtins.elemAt split 1);
             name = lib.substring 44 ((lib.stringLength path) - 44) path;
         in builtins.path { inherit path name sha256; });
@@ -75,7 +75,7 @@ in {
             nixpkgs = pkgs.path; # (the default)
 
             config = { config, pkgs, ... }: { imports = [ ({
-                imports = (/* lib.trace (lib.length extraModules) */ extraModules); # (»extraModules« should include all modules applied to the host that are not unique to the hosts functionality but are also not in »nixpkgs« (i.e. things that _could_ be in nixpkgs); »lib.wip.mkNixosConfiguration« adds all the library modules from this flake nd its inputs, »lib.th.testing.overrideBase« can be used to add additional modules))
+                imports = (/* lib.trace (lib.length extraModules) */ extraModules); # (»extraModules« should include all modules applied to the host that are not unique to the host's functionality but are also not in »nixpkgs« (i.e. things that _could_ be in nixpkgs); »lib.fun.mkNixosConfiguration« adds all the library modules of this flake and its inputs, »lib.th.testing.overrideBase« can be used to add additional modules))
             }) ({
                 # Some base configuration:
 
@@ -149,7 +149,7 @@ in {
         }) ]) cfg.containers;
 
         # For non-native containers, create an overlayfs where / will be bound to:
-        fileSystems = lib.wip.mapMerge (name: cfg: if cfg.rootFS != [ ] then {
+        fileSystems = lib.fun.mapMerge (name: cfg: if cfg.rootFS != [ ] then {
             "/var/lib/nixos-containers/${name}" = (if (lib.length cfg.rootFS == 1) && cfg.readOnlyRootFS then {
                 options = [ "bind" "ro" ]; device = "${lib.head cfg.rootFS}";
             } else {

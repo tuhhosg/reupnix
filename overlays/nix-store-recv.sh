@@ -61,7 +61,7 @@ function main {
         fi
     fi
     unset args[internal-no-unshare]
-    generic-arg-verify 3 || return 3
+    exitCode=3 generic-arg-verify || return
 
     fail() { code=$? ; exit $code ; }
     if [[ ${args[debug]:-} ]] ; then

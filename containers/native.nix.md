@@ -6,7 +6,7 @@
 
 ```nix
 #*/# end of MarkDown, beginning of NixOS config:
-dirname: inputs: let inherit (inputs.self) lib; in pkgs: let
+dirname: inputs: let lib = inputs.self.lib.__internal__; in pkgs: let
 in {
 
     modules = [ ({ config, pkgs, ... }: {

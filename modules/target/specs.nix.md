@@ -9,7 +9,7 @@ Base configuration allowing for multiple specified »config.specialisations« to
 
 ```nix
 #*/# end of MarkDown, beginning of NixOS module:
-dirname: inputs: specialArgs@{ config, pkgs, lib, nodes, ... }: let inherit (inputs.self) lib; in let
+dirname: inputs: specialArgs@{ config, pkgs, lib, nodes, ... }: let lib = inputs.self.lib.__internal__; in let
     cfg = config.th.target.specs;
 in {
 

@@ -10,7 +10,7 @@ Overall, these bootloaders are thus not hermetic.
 
 ```nix
 #*/# end of MarkDown, beginning of NixOS module:
-dirname: inputs: { config, pkgs, lib, ... }: let inherit (inputs.self) lib; in let
+dirname: inputs: { config, pkgs, lib, ... }: let lib = inputs.self.lib.__internal__; in let
     cfg = config.th.hermetic-bootloader;
     hash = builtins.substring 0 8 (builtins.hashString "sha256" config.networking.hostName);
 in {
@@ -67,7 +67,7 @@ in {
 
         builder = (pkgs.runCommand "hermetic-${cfg.loader}" {
             outputs = [ "out" "tree" "init" ];
-        } (lib.wip.substituteImplicit { inherit pkgs; scripts = [ ./hermetic-bootloader.sh ]; context = {
+        } (lib.fun.substituteImplicit { inherit pkgs; scripts = [ ./hermetic-bootloader.sh ]; context = {
             inherit pkgs config inputs cfg;
             # inherit (builtins) trace;
         }; }));
@@ -89,10 +89,10 @@ in {
     }) ({
 
         # Declare boot slots (all as EFI boot parts, the types will be ignored by the bootloader or overwritten when it is installed):
-        wip.fs.disks.partitions = lib.wip.mapMerge (index: {
+        setup.disks.partitions = lib.fun.mapMerge (index: {
             "boot-${toString index}-${hash}" = { type = "ef00"; size = cfg.slots.size; index = index; order = 1500 - index; disk = cfg.slots.disk; }; # (ef00 = EFI boot ; 8301 = Linux reserved)
         }) (lib.range 1 cfg.slots.number);
-        wip.fs.disks.devices.${cfg.slots.disk} = {
+        setup.disks.devices.${cfg.slots.disk} = {
             gptOffset = cfg.extraGptOffset + (32 * (cfg.slots.number + 1)); # Make room for the slot-individual partition tables.
             allowLarger = false; # Switching the partition tables would fail if the physical disk size were to differ from the declared one.
         };
@@ -116,12 +116,12 @@ in {
                 ''CONFIG_BOOTCOMMAND="${bootcmd}"'' # While, when the same variable is defined multiple times, uboot generally uses the last definition, »env default <var>« seems to use the first (which should probably be considered a bug). To avoid inconsistency with »bootcmd«, set »CONFIG_BOOTCOMMAND«, but also define it in defaultEnv for further programmatic use.
             ] ++ cfg.uboot.extraConfig;
         });
-        wip.fs.disks.partitions."uboot-env-${hash}" = {
+        setup.disks.partitions."uboot-env-${hash}" = {
             type = "ef02"; index = 128; order = 2000; alignment = 1;
             position = toString (cfg.uboot.result.envOffset / 512);
             size = toString (cfg.uboot.result.envSize / 512);
         };
-        wip.fs.disks.postFormatCommands = "cat ${cfg.uboot.result.mkEnv { }} >/dev/disk/by-partlabel/uboot-env-${hash}\n";
+        installer.commands.postFormat = "cat ${cfg.uboot.result.mkEnv { }} >/dev/disk/by-partlabel/uboot-env-${hash}\n";
         environment.etc."fw_env.config".text = "/dev/disk/by-partlabel/uboot-env-${hash} 0x0 0x${lib.concatStrings (map toString (lib.toBaseDigits 16 cfg.uboot.result.envSize))}\n";
 
     }) ({
@@ -154,13 +154,13 @@ in {
     }) ]);
 
     # Add the additional partition table+header per boot slot.
-    options.wip.fs.disks.partitioning = lib.mkOption { apply = parts: let
+    options.setup.disks.partitioning = lib.mkOption { apply = parts: let
         esc = lib.escapeShellArg; native = pkgs.buildPackages;
         mbrOnly = cmds: if cfg.loader == "uboot-extlinux" then cmds else "";
     in pkgs.runCommand "partitioning-${config.networking.hostName}-slotted" { } ''
         set -x
         cp -aT ${parts}/ $out/ ; chmod -R +w $out
-        devSize=${toString (lib.wip.parseSizeSuffix config.wip.fs.disks.devices.${cfg.slots.disk}.size)}
+        devSize=${toString (lib.fun.parseSizeSuffix config.setup.disks.devices.${cfg.slots.disk}.size)}
         name=${esc cfg.slots.disk} ; img=$name.img
         ${native.coreutils}/bin/truncate -s $devSize "$img"
 

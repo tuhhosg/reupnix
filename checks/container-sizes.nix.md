@@ -15,7 +15,7 @@ nix run '.#'check:container-sizes --keep-going -- --table=1,2 --plot=1,2
 ```nix
 #*/# end of MarkDown, beginning of Nix test:
 dirname: inputs: pkgs: let
-    inherit (inputs.self) lib;
+    lib = inputs.self.lib.__internal__;
     inherit (lib.th.testing pkgs) toplevel override unpinInputs resize frame collect-deps du-deps run-in-vm;
 
     base-minimal  = override (unpinInputs inputs.self.nixosConfigurations."old:x64-minimal") {

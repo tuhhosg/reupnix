@@ -1,11 +1,12 @@
-dirname: inputs: { config, pkgs, lib, name, ... }: let inherit (inputs.self) lib; in let
+dirname: inputs: { config, pkgs, lib, name, ... }: let lib = inputs.self.lib.__internal__; in let
     flags = lib.tail (lib.splitString "-" name); hasFlag = flag: builtins.elem flag flags;
     hash = builtins.substring 0 8 (builtins.hashString "sha256" name);
 in { imports = [ ({ ## Hardware
 
+    nixpkgs.hostPlatform = "aarch64-linux";
     system.stateVersion = "22.05";
 
-    wip.fs.disks.devices.primary.size = 31914983424; #31657558016; #31914983424; #64021856256; #63864569856;
+    setup.disks.devices.primary.size = 31914983424; #31657558016; #31914983424; #64021856256; #63864569856;
 
     ## Firmware/bootloader:
     th.hermetic-bootloader.loader = "uboot-extlinux";
@@ -17,10 +18,10 @@ in { imports = [ ({ ## Hardware
     nxp.imx8-boot.enable = true; nxp.imx8-boot.soc = "iMX8MP";
     nixpkgs.config.allowUnfreePredicate = pkg: builtins.elem (lib.getName pkg) [ "firmware-imx" ];
     boot.loader.generic-extlinux-compatible.enable = lib.mkForce false;
-    wip.fs.boot.enable = lib.mkForce false;
+    setup.boot.enable = lib.mkForce false;
     # The i.MX expects the boot image starting at sector 64. The multiple copies of the GPT would usually conflict with that, so move them:
     th.hermetic-bootloader.extraGptOffset = 3 * 1024 * 2; # (3M in sectors)
-    wip.fs.disks.partitions."bootloader-${hash}" = lib.mkForce null;
+    setup.disks.partitions."bootloader-${hash}" = lib.mkForce null;
     boot.kernelParams = [ "console=ttymxc1" ];
 
     th.minify.shrinkKernel.baseKernel = pkgs.linux-imx_v8;
@@ -41,7 +42,7 @@ in { imports = [ ({ ## Hardware
 
 }) (lib.mkIf true { ## Test Stuff
 
-    services.getty.autologinUser = "root"; users.users.root.hashedPassword = "${lib.wip.removeTailingNewline (lib.readFile "${inputs.self}/utils/res/root.sha256-pass")}"; # .password = "root";
+    services.getty.autologinUser = "root"; users.users.root.hashedPassword = "${lib.fun.removeTailingNewline (lib.readFile "${inputs.self}/utils/res/root.sha256-pass")}"; # .password = "root";
 
     boot.kernelParams = [ "boot.shell_on_fail" ]; wip.base.panic_on_fail = false;
 

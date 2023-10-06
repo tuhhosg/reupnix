@@ -1,17 +1,17 @@
-dirname: { self, nixpkgs, wiplib, ...}: let
-    inherit (wiplib) lib;
+dirname: inputs: let
+    lib = inputs.self.lib.__internal__;
 in rec {
 
     ## From a host's »default.nix«, import the »machine.nix« configuration, any »systems/« configurations, and enable the defaults for target devices.
     #  The reason why this is a library function and not part of the »../target/defaults« module is that importing based on a config value is not possible, and config values are the only way to pass variables (»dirname«) to a module (other than the global module function arguments, but given that they are global, they are a pretty bad way to pass variables).
     importMachineConfig = inputs: dirname: {
         th.target.defaults.enable = true;
-        imports = [ (lib.wip.importWrapped inputs "${dirname}/machine.nix").module ];
+        imports = [ (lib.fun.importWrapped inputs "${dirname}/machine.nix").module ];
         specialisation = lib.mapAttrs (name: path: { configuration = { imports = [
             { th.target.specs.name = name; }
-            (lib.wip.importWrapped inputs path).module
-        ]; _file = "${dirname}/misc.nix#specialisation"; }; }) (lib.wip.getNixFiles "${dirname}/systems");
-        wip.setup.scripts.extra-setup = { path = ../utils/setup.sh; order = 1500; }; # (for reasons of weirdness, this only works when placed here)
+            (lib.fun.importWrapped inputs path).module
+        ]; _file = "${dirname}/misc.nix#specialisation"; }; }) (lib.fun.getNixFiles "${dirname}/systems");
+        installer.scripts.extra-setup = { path = ../utils/setup.sh; order = 1500; }; # (for reasons of weirdness, this only works when placed here)
     };
 
     copy-files = pkgs: name: attrs: let

@@ -1,11 +1,12 @@
-dirname: inputs: { config, pkgs, lib, name, ... }: let inherit (inputs.self) lib; in let
+dirname: inputs: { config, pkgs, lib, name, ... }: let lib = inputs.self.lib.__internal__; in let
     flags = lib.tail (lib.splitString "-" name); hasFlag = flag: builtins.elem flag flags;
     isArm = (lib.head (lib.splitString "-" name)) == "arm";
 in { imports = [ ({ ## Hardware
 
+    nixpkgs.hostPlatform = if isArm then "aarch64-linux" else "x86_64-linux";
     system.stateVersion = "22.05";
 
-    #wip.fs.disks.devices.primary.size = 128035676160;
+    #setup.disks.devices.primary.size = 128035676160;
 
     boot.kernelParams = [ "console=ttyS0" ];
     networking.interfaces.${if isArm then "enp0s1" else "ens3"}.ipv4.addresses = [ { # vBox: enp0s3 ; qemu-x64: ens3 ; qemu-aarch64: enp0s3
@@ -24,7 +25,7 @@ in { imports = [ ({ ## Hardware
 }) (lib.mkIf (false && hasFlag "minimal") { ## Super-minification
 
     # Just to prove that this can be installed very small (with a 256MiB disk, the »/system« partition gets ~170MiB):
-    wip.fs.disks.devices.primary.size = "256M"; wip.fs.disks.devices.primary.alignment = 8;
+    setup.disks.devices.primary.size = "256M"; setup.disks.devices.primary.alignment = 8;
     th.hermetic-bootloader.slots.size = lib.mkForce "${toString (32 + 1)}M"; # VBox EFI only supports FAT32
     th.target.fs.dataSize = "1K"; fileSystems."/data" = lib.mkForce { fsType = "tmpfs"; device = "tmpfs"; }; # don't really need /data
     #fileSystems."/system".formatOptions = lib.mkForce "-E nodiscard"; # (remove »-O inline_data«, which does not work for too small inodes used as a consequence of the tiny FS size, but irrelevant now that we use a fixed inode size)
@@ -32,7 +33,7 @@ in { imports = [ ({ ## Hardware
 
 }) (lib.mkIf true { ## Temporary Test Stuff
 
-    services.getty.autologinUser = "root"; users.users.root.hashedPassword = "${lib.wip.removeTailingNewline (lib.readFile "${inputs.self}/utils/res/root.${if (builtins.substring 0 5 inputs.nixpkgs.lib.version) == "22.05" then "sha256" else "yescrypt"}-pass")}"; # .password = "root";
+    services.getty.autologinUser = "root"; users.users.root.hashedPassword = "${lib.fun.removeTailingNewline (lib.readFile "${inputs.self}/utils/res/root.${if (builtins.substring 0 5 inputs.nixpkgs.lib.version) == "22.05" then "sha256" else "yescrypt"}-pass")}"; # .password = "root";
 
     boot.kernelParams = [ "boot.shell_on_fail" ]; wip.base.panic_on_fail = false;
 

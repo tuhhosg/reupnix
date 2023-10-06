@@ -10,7 +10,7 @@ Measurement of the size of a minimal, bare-bones system.
 ```nix
 #*/# end of MarkDown, beginning of Nix test:
 dirname: inputs: pkgs: let mkExport = target: let
-    inherit (inputs.self) lib;
+    lib = inputs.self.lib.__internal__;
     inherit (lib.th.testing pkgs) toplevel override overrideBase unpinInputs measure-installation collect-deps merge-deps;
     cross-compile = localSystem: targetSystem: system: if (localSystem == targetSystem) then system else /* override */ (overrideBase system ({
         nixpkgs = lib.mkForce { localSystem.system = localSystem; crossSystem.system = targetSystem; };

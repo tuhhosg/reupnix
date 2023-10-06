@@ -148,12 +148,12 @@ function activate-as-slot {( set -eu ; # 1: tree, 2: index, 3: label, 4?: selfRe
 
     #  The behavior might be slightly (EFI-)implementation-dependent, but with a working primary header, the secondary should not be used. (The spec (https://uefi.org/sites/default/files/resources/UEFI_Spec_2_8_final.pdf, page 120) says that the last step in checking that "a GPT" is valid is to check that the AlternateLBA "is a valid GPT" (without addressing the recursion there). It does not require that the two headers point at each other (here) or that they otherwise match ...)
     #  The spec says to update the secondary (backup) header first.
-    @{pkgs.coreutils}/bin/dd status=none conv=notrunc bs=512 skip=2 seek=$(( diskSize / 512 - 1 )) count=1 if=@{config.wip.fs.disks.partitioning}/"@{cfg.slots.disk}".slot-${index}.backup of="$disk"
+    @{pkgs.coreutils}/bin/dd status=none conv=notrunc bs=512 skip=2 seek=$(( diskSize / 512 - 1 )) count=1 if=@{config.setup.disks.partitioning}/"@{cfg.slots.disk}".slot-${index}.backup of="$disk"
 
     if [[ @{cfg.loader} != uboot-extlinux ]] ; then
-        @{pkgs.coreutils}/bin/dd status=none conv=notrunc bs=512  skip=1 seek=1                     count=1 if=@{config.wip.fs.disks.partitioning}/"@{cfg.slots.disk}".slot-${index}.backup of="$disk"
+        @{pkgs.coreutils}/bin/dd status=none conv=notrunc bs=512  skip=1 seek=1                     count=1 if=@{config.setup.disks.partitioning}/"@{cfg.slots.disk}".slot-${index}.backup of="$disk"
     else
-        @{pkgs.coreutils}/bin/dd status=none conv=notrunc bs=1024 skip=0 seek=0                     count=1 if=@{config.wip.fs.disks.partitioning}/"@{cfg.slots.disk}".slot-${index}.backup of="$disk"
+        @{pkgs.coreutils}/bin/dd status=none conv=notrunc bs=1024 skip=0 seek=0                     count=1 if=@{config.setup.disks.partitioning}/"@{cfg.slots.disk}".slot-${index}.backup of="$disk"
         # For systems that actually use both MBR and GPU (rPI with uboot), this assumes/requires writing two logical sectors to be atomic ...
     fi
 )}
@@ -163,7 +163,7 @@ function build-out {( set -eu ; # (void)
 # 1: slot, 2?: selfRef, ...: ignored
 $( declare -f write-to-fs write-boot-partition get-parent-disk activate-as-slot )
 $( declare -p pkgs_findutils pkgs_util0linux pkgs_coreutils pkgs_dosfstools )
-$( declare -p config_wip_fs_disks_partitioning config_networking_hostName1hashString_sha256 cfg_loader cfg_slots_number cfg_slots_disk )
+$( declare -p config_setup_disks_partitioning config_networking_hostName1hashString_sha256 cfg_loader cfg_slots_number cfg_slots_disk )
 activate-as-slot $tree \"\$1\" '@{cfg.slots.currentLabel}' \"\${2:-}\"
 " > $out
     chmod +x $out
@@ -177,7 +177,7 @@ function apply-partitionings {( set -eu ; # (void)
         if [[ $( get-parent-disk "/dev/disk/by-partlabel/boot-${i}-${hash}" ) != "$disk" ]] ; then echo "boot slot $i is on unexpected parent disk" ; exit 1 ; fi
     done
     for (( i = 1 ; i <= @{cfg.slots.number} ; i++ )) ; do
-        @{pkgs.gptfdisk}/bin/sgdisk --load-backup=@{config.wip.fs.disks.partitioning}/"@{cfg.slots.disk}".slot-${i}.backup "$disk" &>/dev/null
+        @{pkgs.gptfdisk}/bin/sgdisk --load-backup=@{config.setup.disks.partitioning}/"@{cfg.slots.disk}".slot-${i}.backup "$disk" &>/dev/null
     done
 )}
 
@@ -186,7 +186,7 @@ function build-init {( set -eu ; # (void)
 # ...: outArgs
 $( declare -f get-parent-disk apply-partitionings )
 $( declare -p pkgs_coreutils pkgs_gptfdisk )
-$( declare -p config_wip_fs_disks_partitioning config_networking_hostName1hashString_sha256 cfg_slots_number cfg_slots_disk )
+$( declare -p config_setup_disks_partitioning config_networking_hostName1hashString_sha256 cfg_slots_number cfg_slots_disk )
 apply-partitionings
 source $out
 disk=\$( get-parent-disk /dev/disk/by-partlabel/boot-1-@{config.networking.hostName!hashString.sha256:0:8} )

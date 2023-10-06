@@ -8,7 +8,7 @@ Fixes for stuff that doesn't build (when cross-compiling or building through qem
 ```nix
 #*/# end of MarkDown, beginning of NixPkgs overlay:
 dirname: inputs: final: prev: let
-    inherit (final) pkgs; inherit (inputs.self) lib;
+    inherit (final) pkgs; lib = inputs.self.lib.__internal__;
     pkgsVersion = lib.fileContents "${pkgs.path}/.version"; # (there is probably some better way to get this)
 in {
 
@@ -29,7 +29,14 @@ in {
     man-db = prev.man-db.overrideAttrs (old: {
         doCheck = false;
     });
-    perl536 = prev.perl536.overrideAttrs (old: lib.optionalAttrs (pkgsVersion == "22.11") {
+    libhwy = prev.libhwy.overrideAttrs (old: lib.optionalAttrs (pkgsVersion >= "23.05") {
+        doCheck = false; # HwyConvertTestGroup/HwyConvertTest.TestAllTruncate/AVX3_ZEN4 fails
+    });
+    qemu_kvm = prev.qemu_kvm.override (old: lib.optionalAttrs (pkgsVersion >= "23.05") {
+        # some audio thing depends on guile, which fails to build without some string-conversion stuff, so disable all audio things:
+        alsaSupport = false; jackSupport = false; pulseSupport = false; sdlSupport = false; spiceSupport = false;
+    });
+    perl536 = (prev.perl536.overrideAttrs (old: lib.optionalAttrs (pkgsVersion == "22.11") {
         passthru = old.passthru // { pkgs = old.passthru.pkgs.override {
             # (this effectively disables config.nixpkgs.config.perlPackageOverrides)
             overrides = (_: {
@@ -38,7 +45,15 @@ in {
                 });
             });
         }; };
-    }); # ((yes, this verbose monster seems about the most "at the root" way to override perl packages (but still only for one version of perl)))
+        # ((yes, this verbose monster seems about the most "at the root" way to override perl packages (but still only for one version of perl)))
+    })).override (old: lib.optionalAttrs (pkgsVersion == "23.05") {
+        # (this effectively disables config.nixpkgs.config.perlPackageOverrides)
+        overrides = (_: {
+            Po4a = (lib.recurseIntoAttrs prev.perl536.pkgs).Po4a.overrideAttrs (old: {
+                doCheck = false;
+            });
+        });
+    });
 
 /*
     # And these failed at some point, but now don't?
@@ -53,4 +68,21 @@ in {
     });
  */
 
+    # vim fails to build without some locale stuff, so make xxd not depend of a full vim build:
+    xxd = if (pkgsVersion < "23.05") then prev.xxd else pkgs.stdenv.mkDerivation {
+        pname = "xxd"; inherit (pkgs.vim) meta version;
+        src = "${pkgs.vim.src}/src/xxd";
+        unpackPhase = ''
+            runHook preUnpack
+            cp -rT $src .
+            runHook postUnpack
+        '';
+        installPhase = ''
+            runHook preInstall
+            mkdir -p $out/bin
+            cp xxd $out/bin
+            runHook postInstall
+        '';
+        # TODO: manpage and such
+    };
 }

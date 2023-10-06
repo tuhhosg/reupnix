@@ -21,7 +21,7 @@ That way, no part that is relevant for the booting of the fallback config can be
 
 ```nix
 #*/# end of MarkDown, beginning of NixOS module:
-dirname: inputs: { config, pkgs, lib, ... }: let inherit (inputs.self) lib; in let
+dirname: inputs: { config, pkgs, lib, ... }: let lib = inputs.self.lib.__internal__; in let
     cfg = config.th.target.fs;
 in {
 
@@ -40,7 +40,7 @@ in {
 
         fileSystems."/"             = { fsType  =  "tmpfs";    device = "tmpfs"; neededForBoot = implied; options = [ "mode=755" ]; };
 
-        wip.fs.disks.partitions."system-${hash}" = { type = "8300"; size = null; order = 500; };
+        setup.disks.partitions."system-${hash}" = { type = "8300"; size = null; order = 500; };
         fileSystems."/system"       = { fsType  =   "ext4";    device = "/dev/disk/by-partlabel/system-${hash}"; neededForBoot = true; options = [ "noatime" "ro" ]; formatOptions = "-O inline_data -b 4k -E nodiscard -F"; };
         fileSystems."/nix/store"    = { options = [ "bind" "ro" "private" ]; device = "/system/nix/store"; neededForBoot = implied; };
 
@@ -55,7 +55,7 @@ in {
     }) ({
         # Declare data partition:
 
-        wip.fs.disks.partitions."data-${hash}" = { type = "8300"; size = cfg.dataSize; order = 1000; };
+        setup.disks.partitions."data-${hash}" = { type = "8300"; size = cfg.dataSize; order = 1000; };
 
     }) (lib.mkIf (cfg.dataDir == null) {
         # Make /data mountable in default spec:

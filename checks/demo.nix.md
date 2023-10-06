@@ -17,7 +17,7 @@ An example of the send stream, substantially updating `nixpkgs`.
 ```nix
 #*/# end of MarkDown, beginning of Nix test:
 dirname: inputs: pkgs: let
-    inherit (inputs.self) lib;
+    lib = inputs.self.lib.__internal__;
     inherit (lib.th.testing pkgs) toplevel override unpinInputs resize dropRefs time disk-usage nix-store-send run-in-vm;
 
     new = override (resize "512M" (unpinInputs inputs.self.nixosConfigurations."new:x64-minimal")) {

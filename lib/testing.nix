@@ -1,5 +1,5 @@
-dirname: { self, nixpkgs, wiplib, ...}: let
-    inherit (wiplib) lib;
+dirname: inputs: let
+    lib = inputs.self.lib.__internal__;
 in pkgs: rec {
     ##
     # Library functions for testing (or rather assessment) of the properties of the configurations and scripts.
@@ -21,7 +21,7 @@ in pkgs: rec {
         wip.base.includeInputs = lib.mkForce { };
     };
     ## Resizes a hosts disk (image):
-    resize = size: system: override system { wip.fs.disks.devices.primary.size = lib.mkForce size; };
+    resize = size: system: override system { setup.disks.devices.primary.size = lib.mkForce size; };
     dropRefs = builtins.unsafeDiscardStringContext; # Use this when referencing something from a »run-in-vm« test that should not be included in the initial installation.
 
     ## In bash, logs a command and then executes it reporting its time afterwards:
@@ -34,12 +34,12 @@ in pkgs: rec {
     ## Runs the bash script »measurement« after installing the system, while its filesystems are mounted at »$mnt«. Result files may be written to »$out/*«.
     measure-installation = system: measurement: let
         system' = override system ({
-            wip.fs.disks.postInstallCommands = ''
+            installer.commands.postInstall = ''
                 out=''${args[x-out]} ; if [[ ''${args[no-vm]:-} ]] ; then out=/tmp/shared/out ; mkdir -p $out ; fi # "no-vm" is set when already in the VM
                 ( ${measurement} ) >$( if [[ ''${args[no-vm]:-} ]] ; then echo /tmp/shared/log ; else echo ''${args[x-tmp]}/log ; fi )
             '';
         });
-        scripts = lib.wip.writeSystemScripts { system = system'; pkgs = pkgs; };
+        scripts = lib.inst.writeSystemScripts { system = system'; pkgs = pkgs; };
     in ''(
         tmp=$( mktemp -d ) && trap "rm -rf '$tmp'" EXIT || exit
         install=( ${scripts} install-system $tmp/image --no-inspect --toplevel=${toplevel system} --vm-shared=$tmp --x-tmp=$tmp --x-out="$out" )
@@ -93,17 +93,17 @@ in pkgs: rec {
     ## Builds »system«, installs it to a temporary image, then for every »{ pre?, test, }« in »tests«, boots the image in qemu, waits for SSH to come up, optionally runs »pre« (with »$ssh« set), runs »test« via ssh, and powers down the VM. Aborts if »pre« or »test« fail.
     run-in-vm = system: opts@{ quiet ? false, ... }: tests: let
         system' = override system ({
-            wip.services.dropbear.rootKeys = lib.readFile "${self}/utils/res/ssh_testkey_1.pub";
+            wip.services.dropbear.rootKeys = lib.readFile "${inputs.self}/utils/res/ssh_testkey_1.pub";
             system.extraDependencies = [ (toplevel system) ] ++ map (_:_.test) tests'; # to include the test files in the installation
         } // (if opts?override then { imports = [ opts.override ]; } else { }));
         toFile = type: i: code: pkgs.writeShellScript "${type}-${toString i}.sh" "set -eu\n${code}";
         tests' = lib.imap0 (i: { pre ? "", test, }: { pre = if pre == "" then "true" else toFile "pre-test" i pre; test = toFile "test" i test; }) (map (test: if builtins.isString test then { inherit test; } else test) tests);
-        known_hosts = builtins.toFile "dummy_known_hosts" ''[127.0.0.1]:* ${lib.readFile "${self}/utils/res/dropbear_ecdsa_host_key.pub"}'';
+        known_hosts = builtins.toFile "dummy_known_hosts" ''[127.0.0.1]:* ${lib.readFile "${inputs.self}/utils/res/dropbear_ecdsa_host_key.pub"}'';
         log = message: if quiet then "" else ''echo "${message}" ;'';
-        scripts = lib.wip.writeSystemScripts { system = system'; pkgs = pkgs; };
+        scripts = lib.inst.writeSystemScripts { system = system'; pkgs = pkgs; };
     in ''(
         ${log "installing system: ${toplevel system'}"}
-        cp ${self}/utils/res/ssh_testkey_1 ./ssh_testkey_1 2>/dev/null || true ; chmod 400 ./ssh_testkey_1 || exit
+        cp ${inputs.self}/utils/res/ssh_testkey_1 ./ssh_testkey_1 2>/dev/null || true ; chmod 400 ./ssh_testkey_1 || exit
         port=${bash-random-port}
         sshOpts='-p '$port' -oUserKnownHostsFile=${known_hosts} -i ./ssh_testkey_1' ; ssh='${pkgs.openssh}/bin/ssh root@127.0.0.1 '"$sshOpts"
 
@@ -137,9 +137,9 @@ in pkgs: rec {
 
     ## Given a »markdown« string, a sequence of (three or more) back»ticks« and a code block »tag«, this finds the (first and only) occurrence of the thus fenced code bock (allowing no following code block with the same number of ticks) and returns its »text« contents and line »offset« (within the »markdown«).
     extractCodeBlock = { ticks, tag, markdown }: let
-        inherit (lib.wip.extractLineAnchored ''${ticks}${tag}'' true true markdown) before after;
+        inherit (lib.fun.extractLineAnchored ''${ticks}${tag}'' true true markdown) before after;
     in {
-        text = (lib.wip.extractLineAnchored ''${ticks}'' true true after).before;
+        text = (lib.fun.extractLineAnchored ''${ticks}'' true true after).before;
         offset = builtins.length (lib.splitString "\n" before);
     };
     ## Given the arguments to »extractCodeBlock« and a new »header«, this replaces everything other than the extracted block, with »header« and bland or missing lines, maintaining the blocks line offset and relative path.

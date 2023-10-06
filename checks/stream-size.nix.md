@@ -10,7 +10,7 @@ An example of the send stream, substantially updating `nixpkgs`.
 ```nix
 #*/# end of MarkDown, beginning of Nix test:
 dirname: inputs: pkgs: let
-    inherit (inputs.self) lib;
+    lib = inputs.self.lib.__internal__;
     test = lib.th.testing pkgs;
 
     new = test.unpinInputs inputs.self.nixosConfigurations."new:x64-minimal";

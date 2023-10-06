@@ -8,9 +8,9 @@
 ```nix
 #*/# end of MarkDown, beginning of Nix test:
 dirname: inputs: pkgs: let
-    inherit (inputs.self) lib; test = lib.th.testing pkgs;
+    lib = inputs.self.lib.__internal__; test = lib.th.testing pkgs;
     toplevels = lib.mapAttrs (n: v: test.toplevel v);
-    flatten = attrs: lib.wip.mapMerge (k1: v1: lib.wip.mapMerge (k2: v2: { "${k1}_${k2}" = v2; }) v1) attrs;
+    flatten = attrs: lib.fun.mapMerge (k1: v1: lib.fun.mapMerge (k2: v2: { "${k1}_${k2}" = v2; }) v1) attrs;
 
     prep-system = system: test.override (test.unpinInputs system) ({ config, ... }: {
         # »override« does not affect containers, stacking »overrideBase« (for some reason) only works on the repl, and targeting the containers explicitly also doesn't work ...
@@ -28,7 +28,7 @@ dirname: inputs: pkgs: let
         disableModule."system/boot/kexec.nix" = lib.mkForce false;
     });
 
-    applications = ((lib.wip.importWrapped inputs "${dirname}/container-sizes.nix.md").required pkgs).images;
+    applications = ((lib.fun.importWrapped inputs "${dirname}/container-sizes.nix.md").required pkgs).images;
     add-all-apps = system: test.override system {
         imports = map (_:_.nixos or { }) (lib.attrValues applications);
         system.nixos.tags = [ "withApps" ];
@@ -115,8 +115,8 @@ dirname: inputs: pkgs: let
         updated-nixpkgs = pkgs.applyPatches {
             name = "nixpkgs-systemd"; src = "${inputs.old-nixpkgs}";
             patches = [
-                (pkgs.fetchpatch2 { url = "https://github.com/NixOS/nixpkgs/commit/eeff6c493373d3fff11421b55309fab6a1d4ec7d.diff"; sha256 = "sha256-Sqt1FQG+0j9dJMtZiBX+dK3UW5SH5Gtg8zVFTs0F23s="; }) # (irrelevant, but required for the next patch)
-                (pkgs.fetchpatch2 { url = "https://github.com/NixOS/nixpkgs/commit/a14d1a2e7e8c19087897bc646a37f50096b736b1.diff"; sha256 = "sha256-oT0Uv7wBcH7yw6v6w+sicXW96xsFNQ3E+OUjICYyLdI="; }) # systemd: 250.4 -> 251.3
+                (pkgs.fetchpatch2 { url = "https://github.com/NixOS/nixpkgs/commit/eeff6c493373d3fff11421b55309fab6a1d4ec7d.diff?full_index=1"; sha256 = "sha256-1o/Y4hStyGxUDEQArobqEh+ofH4mXecty9l3ep9Htf8="; }) # (irrelevant, but required for the next patch)
+                (pkgs.fetchpatch2 { url = "https://github.com/NixOS/nixpkgs/commit/a14d1a2e7e8c19087897bc646a37f50096b736b1.diff?full_index=1"; sha256 = "sha256-d0vUlB0uTx7+cLzl2FtmZGQNRK396TmxK9QdUZijp6I="; }) # systemd: 250.4 -> 251.3
             ];
         };
     in (final: prev: {
@@ -191,7 +191,7 @@ dirname: inputs: pkgs: let
         }) minimal);
     };
 
-    installers = lib.mapAttrs (k1: v: lib.mapAttrs (k2: system: pkgs.writeShellScriptBin "scripts-${k2}-${k1}" ''exec ${lib.wip.writeSystemScripts { inherit system pkgs; }} "$@"'') v) systems;
+    installers = lib.mapAttrs (k1: v: lib.mapAttrs (k2: system: pkgs.writeShellScriptBin "scripts-${k2}-${k1}" ''exec ${lib.inst.writeSystemScripts { inherit system pkgs; }} "$@"'') v) systems;
 
 in { inherit systems installers; script = test.useTsBlock { inherit pkgs dirname; filename = "nix_store_send.nix.md"; ticks = "````"; context = {
     inherit dirname; pkgs = {

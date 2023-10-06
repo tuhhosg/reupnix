@@ -39,7 +39,7 @@ TODO: documentation
 ```nix
 #*/# end of MarkDown, beginning of NixPkgs overlay:
 dirname: inputs: final: prev: let
-    inherit (final) pkgs; inherit (inputs.self) lib;
+    inherit (final) pkgs; lib = inputs.self.lib.__internal__;
 in {
 
     # e.g.: add a patched version of a package (use the same name to replace)

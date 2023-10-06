@@ -15,7 +15,7 @@ The by far biggest pain to remove was `perl` (see all the references below), but
 
 ```nix
 #*/# end of MarkDown, beginning of NixOS module:
-dirname: inputs: specialArgs@{ config, pkgs, lib, utils, ... }: let inherit (inputs.self) lib; in let
+dirname: inputs: specialArgs@{ config, pkgs, lib, utils, ... }: let lib = inputs.self.lib.__internal__; in let
     cfg = config.th.minify;
     specialArgs' = specialArgs // { inherit inputs; }; # Apparently this module gets called and evaluated twice. Once with all »specialArgs« passed into the build, and once only with those that this module lists as names arguments.
 
@@ -48,19 +48,19 @@ in {
     }; };
 
     imports = (
-        map (path: lib.wip.makeNixpkgsModuleConfigOptional path { }) optionalModules
+        map (path: lib.fun.makeNixpkgsModuleConfigOptional path { }) optionalModules
     ) ++ [
         # (None of these should have any effect by default!)
-        (lib.wip.overrideNixpkgsModule "virtualisation/nixos-containers.nix" { } (module: {
+        (lib.fun.overrideNixpkgsModule "virtualisation/nixos-containers.nix" { } (module: {
             options.boot.interactiveContainers = (lib.mkEnableOption "interactive nixos-containers") // { default = true; };
             config.content.environment.systemPackages = lib.mkIf config.boot.interactiveContainers module.config.content.environment.systemPackages;
         }))
-        (lib.wip.overrideNixpkgsModule "tasks/filesystems.nix" { } (module: {
+        (lib.fun.overrideNixpkgsModule "tasks/filesystems.nix" { } (module: {
             options.includeFSpackages = (lib.mkEnableOption "inclusion of filesystem maintenance tools") // { default = true; };
             config.environment.systemPackages = lib.mkIf config.includeFSpackages module.config.environment.systemPackages; # adds fuse
             config.system.fsPackages = lib.mkIf config.includeFSpackages module.config.system.fsPackages; # adds dosfstools
         }))
-        (lib.wip.overrideNixpkgsModule "tasks/network-interfaces.nix" { } (module: {
+        (lib.fun.overrideNixpkgsModule "tasks/network-interfaces.nix" { } (module: {
             options.includeNetTools = (lib.mkEnableOption "inclusion of basic networking utilities") // { default = true; };
             config.environment.systemPackages = lib.mkIf config.includeNetTools module.config.environment.systemPackages; # adds [ host iproute2 iputils nettools ]
             config.systemd.services.network-local-commands = lib.mkIf config.includeNetTools module.config.systemd.services.network-local-commands; # implements »config.networking.localCommands« using with iproute2
@@ -200,9 +200,9 @@ in {
                 util-linux = prev.util-linux.override { nlsSupport = false; };
 
                 # (This causes everything to be built from sources. Could use »config.system.replaceRuntimeDependencies« to use a normal build, then copy the outputs with the glibc runtime dependency replaced. That, though, might behave strangely if any other overlay affects glibc.)
-                glibc = prev.glibc.overrideAttrs (prev: {
+                glibc = prev.glibc.overrideAttrs (final: prev: {
                     #postInstall = let
-                    #    all = (lib.wip.extractLineAnchored ''make -j[$][{]NIX_BUILD_CORES:-1[}] localedata/install-locales'' true true prev.postInstall);
+                    #    all = (lib.fun.extractLineAnchored ''make -j[$][{]NIX_BUILD_CORES:-1[}] localedata/install-locales'' true true prev.postInstall);
                     #    minimal = ''
                     #        # don't create $out/lib/locale/locale-archive
                     #    '';
@@ -299,8 +299,8 @@ in {
                 This seems to be incompatible with systemd services that require certain types of namespacing.
             '';
         } // (let
-            getUid = u: toString (lib.wip.ifNull u.uid (config.ids.uids.${u.name} or (throw  "User ${u.name} has no UID")));
-            getGid = g: toString (lib.wip.ifNull g.gid (config.ids.gids.${g.name} or (throw "Group ${g.name} has no GID")));
+            getUid = u: toString (lib.fun.ifNull u.uid (config.ids.uids.${u.name} or (throw  "User ${u.name} has no UID")));
+            getGid = g: toString (lib.fun.ifNull g.gid (config.ids.gids.${g.name} or (throw "Group ${g.name} has no GID")));
             defaultMode = "symlink"; # "644" # (not sure whether these files should be writable)
         in {
             system.activationScripts.users = lib.mkForce "";
@@ -311,11 +311,11 @@ in {
                 "${g.name}:x:${getGid g}:${lib.concatStringsSep "," g.members}"
             )) (lib.attrValues config.users.groups)}\n"; mode = defaultMode; };
             environment.etc.passwd = { text = "${lib.concatMapStringsSep "\n" (u: (
-                "${u.name}:x:${getUid u}:${if lib.wip.matches ''^[0-9]+$'' u.group then u.group else if config.users.groups?${u.group or u.name} then getGid config.users.groups.${u.group} else throw "User ${u.name}'s group ${u.group} does not exist"}:${u.description}:${u.home}:${utils.toShellPath u.shell}"
+                "${u.name}:x:${getUid u}:${if lib.fun.matches ''^[0-9]+$'' u.group then u.group else if config.users.groups?${u.group or u.name} then getGid config.users.groups.${u.group} else throw "User ${u.name}'s group ${u.group} does not exist"}:${u.description}:${u.home}:${utils.toShellPath u.shell}"
             )) (lib.attrValues config.users.users)}\n"; mode = defaultMode; };
             environment.etc.shadow = { text = "${lib.concatMapStringsSep "\n" (u: (
                 if u.password != null || u.passwordFile != null then throw "With static user generation, user passwords may only be set as ».hashedPassword« (check user ${u.name})" else
-                "${u.name}:${lib.wip.ifNull u.hashedPassword "!"}:1::::::"
+                "${u.name}:${lib.fun.ifNull u.hashedPassword "!"}:1::::::"
             )) (lib.attrValues config.users.users)}\n"; mode = "640"; gid = config.ids.gids.shadow; }; # A world-readable shadow file kind of defats its own purpose, but systems that use this shouldn't have passwords anyway (and anything written here would already be world-readable in the store anyway).
             environment.etc.subuid = { text = ''
                 # TODO
@@ -381,14 +381,14 @@ in {
                 The interactive »pkgs.nixos-container« CLI does depend on »perl«, static containers do only by calling that CLI from »ExecReload«.
             '';
             boot.interactiveContainers = false;
-            systemd.services = lib.wip.mapMerge (name: { "container@${name}".serviceConfig.ExecReload = lib.mkForce ""; }) ([ "" ] ++ (lib.attrNames config.containers));
+            systemd.services = lib.fun.mapMerge (name: { "container@${name}".serviceConfig.ExecReload = lib.mkForce ""; }) ([ "" ] ++ (lib.attrNames config.containers));
         });
 
         shrinkSystemd = ({
             description = ''Shrink »systemd«: The default NixOS systemd is built with support for pretty much everything. This remove most of that.'';
             nixpkgs.overlays = lib.mkIf (!config.system.build?isVmExec) [ (final: prev: {
                 # nixpkgs/pkgs/os-specific/linux/systemd/default.nix#L608
-                systemd = (prev.systemd.override {
+                systemd = (prev.systemd.override ({
                     # keys taken from definition of »systemd-minimal« in »pkgs/top-level/all-packages.nix:23048«:
                     withAnalyze = false; # sufficient to do beforehand?
                     withApparmor = false;
@@ -422,16 +422,27 @@ in {
                     #lvm2 = null; removed around 2022-04-03/9?
                     libfido2 = null;
                     p11-kit = null;
-                });
+                } // (lib.optionalAttrs ((lib.strings.fileContents "${inputs.nixpkgs}/.version") >= "23.05") {
+                    withAcl = false;
+                    withAudit = false;
+                    withHomed = false;
+                    withLibidn2 = false;
+                    withPam = false;
+                    withUkify = false;
+                    withUtmp = false;
+                })));
                 util-linux = prev.util-linux.override { systemdSupport = false; systemd = null; };
             }) ];
             services.nscd.enable = false; system.nssModules = lib.mkForce [ ];
+            systemd.coredump.enable = false;
+            environment.etc."udev/hwdb.bin".source = lib.mkForce (pkgs.runCommandLocal "empty" { } ''touch $out'');
             systemd.suppressedSystemUnits = [ # (the test to automatically exclude these does for some reason not work)
                 "systemd-coredump.socket" "systemd-coredump@.service" # withCoredump
                 "cryptsetup.target" "cryptsetup-pre.target" "remote-cryptsetup.target" # withCryptsetup
                 "systemd-hostnamed.service" "dbus-org.freedesktop.hostname1.service" # withHostnamed
                 "systemd-importd.service" "dbus-org.freedesktop.import1.service" #withImportd
                 #"systemd-logind.service" "autovt@.service" "systemd-user-sessions.service" "dbus-org.freedesktop.machine1.service" "dbus-org.freedesktop.login1.service" "user@.service" "user-runtime-dir@.service" # withLogind
+                "systemd-user-sessions.service" # missing in 23.05: why?
                 "systemd-oomd.service" "systemd-oomd.socket" # withOomd
                 "systemd-timedated.service" "systemd-timesyncd.service" "systemd-localed.service" "dbus-org.freedesktop.timedate1.service" "dbus-org.freedesktop.locale1.service" # withTimedated/withTimesyncd
             ];

@@ -10,7 +10,7 @@
 ```nix
 #*/# end of MarkDown, beginning of Nix test:
 dirname: inputs: pkgs: let
-    inherit (inputs.self) lib;
+    lib = inputs.self.lib.__internal__;
     inherit (lib.th.testing pkgs) toplevel override unpinInputs measure-installation nix-store-send;
 
     old = override (unpinInputs inputs.self.nixosConfigurations."old:x64-minimal") {

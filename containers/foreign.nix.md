@@ -10,7 +10,7 @@ See `mqttOciConfig` in [](../checks/nix_store_send.nix.md) for a working example
 
 ```nix
 #*/# end of MarkDown, beginning of NixOS config:
-dirname: inputs: let inherit (inputs.self) lib; in pkgs: let
+dirname: inputs: let lib = inputs.self.lib.__internal__; in pkgs: let
 in {
 
     rootFS = [

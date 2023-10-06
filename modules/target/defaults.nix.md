@@ -9,7 +9,7 @@ Base configuration for the target devices, pulling in everything that all target
 
 ```nix
 #*/# end of MarkDown, beginning of NixOS module:
-dirname: inputs: { config, pkgs, lib, ... }: let inherit (inputs.self) lib; in let
+dirname: inputs: { config, pkgs, lib, ... }: let lib = inputs.self.lib.__internal__; in let
     cfg = config.th.target.defaults;
 in {
 

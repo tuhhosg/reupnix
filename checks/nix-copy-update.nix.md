@@ -10,7 +10,7 @@ An example of the send stream, substantially updating `nixpkgs`.
 ```nix
 #*/# end of MarkDown, beginning of Nix test:
 dirname: inputs: pkgs: let
-    inherit (inputs.self) lib;
+    lib = inputs.self.lib.__internal__;
     inherit (lib.th.testing pkgs) toplevel override unpinInputs resize dropRefs time disk-usage frame nix-store-send run-in-vm;
 
     keep-nix = { pkgs, config, ... }: { # got to keep Nix (and it's DBs) for this

@@ -1,10 +1,11 @@
-dirname: inputs: { config, pkgs, lib, name, ... }: let inherit (inputs.self) lib; in let
+dirname: inputs: { config, pkgs, lib, name, ... }: let lib = inputs.self.lib.__internal__; in let
     flags = lib.tail (lib.splitString "-" name); hasFlag = flag: builtins.elem flag flags;
 in { imports = [ ({ ## Hardware
 
+    nixpkgs.hostPlatform = "aarch64-linux";
     system.stateVersion = "22.05";
 
-    wip.fs.disks.devices.primary.size = 31914983424; #63864569856; #31657558016; #64021856256; #31914983424;
+    setup.disks.devices.primary.size = 31914983424; #63864569856; #31657558016; #64021856256; #31914983424;
 
     networking.interfaces.eth0.ipv4.addresses = [ {
         address = "192.168.8.85"; prefixLength = 24;
@@ -47,6 +48,8 @@ in { imports = [ ({ ## Hardware
             arm_64bit=1
             kernel=u-boot.bin
             enable_uart=1
+            disable_splash=1
+            boot_delay=0
         '');
             # force_turbo=1 # could try this
             # gpu_mem=16 # these three options in combination reduce the GPUs capabilities (or something like that), but may also reduce boot time a bit
@@ -67,7 +70,7 @@ in { imports = [ ({ ## Hardware
 
         # The rPI4 does not need a »bootcode.bin« since it has the code in its eeprom.
         # https://www.raspberrypi.com/documentation/computers/configuration.html#start-elf-start_x-elf-start_db-elf-start_cd-elf-start4-elf-start4x-elf-start4cd-elf-start4db-elf
-    } // (lib.wip.mapMerge (name: {
+    } // (lib.fun.mapMerge (name: {
         ${name} = "${pkgs.raspberrypifw}/share/raspberrypi/boot/${name}";
     }) [ # Only one pair (with 4) of these is necessary:
         /* "start.elf" "start_cd.elf" "start_x.elf" "start_db.elf" */ "start4.elf" /* "start4cd.elf" "start4x.elf" "start4db.elf" */
@@ -83,14 +86,14 @@ in { imports = [ ({ ## Hardware
 }) /* (lib.mkIf (hasFlag "minimal") { ## Super-minification
 
     # Just to prove that this can be installed very small disk (with a 640MiB disk, the »/system« partition gets ~360MiB):
-    wip.fs.disks.devices.primary.size = lib.mkForce "640M"; wip.fs.disks.devices.primary.alignment = 8;
+    setup.disks.devices.primary.size = lib.mkForce "640M"; setup.disks.devices.primary.alignment = 8;
     th.target.fs.dataSize = "1K"; fileSystems."/data" = lib.mkForce { fsType = "tmpfs"; device = "tmpfs"; }; # don't really need /data
     #fileSystems."/system".formatOptions = lib.mkForce "-E nodiscard"; # (remove »-O inline_data«, which does not work for too small inodes used as a consequence of the tiny FS size)
 
 
 }) */ (lib.mkIf true { ## Temporary Test Stuff
 
-    services.getty.autologinUser = "root"; users.users.root.hashedPassword = "${lib.wip.removeTailingNewline (lib.readFile "${inputs.self}/utils/res/root.sha256-pass")}"; # .password = "root";
+    services.getty.autologinUser = "root"; users.users.root.hashedPassword = "${lib.fun.removeTailingNewline (lib.readFile "${inputs.self}/utils/res/root.sha256-pass")}"; # .password = "root";
 
     boot.kernelParams = [ "boot.shell_on_fail" ]; wip.base.panic_on_fail = false;
 

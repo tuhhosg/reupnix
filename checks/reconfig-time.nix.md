@@ -8,9 +8,9 @@
 ```nix
 #*/# end of MarkDown, beginning of Nix test:
 dirname: inputs: pkgs: let
-    inherit (inputs.self) lib; test = lib.th.testing pkgs;
+    lib = inputs.self.lib.__internal__; test = lib.th.testing pkgs;
     toplevels = lib.mapAttrs (n: v: test.toplevel v);
-    flatten = attrs: lib.wip.mapMerge (k1: v1: lib.wip.mapMerge (k2: v2: { "${k1}_${k2}" = v2; }) v1) attrs;
+    flatten = attrs: lib.fun.mapMerge (k1: v1: lib.fun.mapMerge (k2: v2: { "${k1}_${k2}" = v2; }) v1) attrs;
 
     prep-system = system: test.override (test.unpinInputs system) ({ config, ... }: {
         # »override« does not affect containers, stacking »overrideBase« (for some reason) only works on the repl, and targeting the containers explicitly also doesn't work ...
@@ -73,7 +73,7 @@ dirname: inputs: pkgs: let
         })) minimal);
     };
 
-    installers = lib.mapAttrs (k1: v: lib.mapAttrs (k2: system: pkgs.writeShellScriptBin "scripts-${k2}-${k1}" ''exec ${lib.wip.writeSystemScripts { inherit system pkgs; }} "$@"'') v) systems;
+    installers = lib.mapAttrs (k1: v: lib.mapAttrs (k2: system: pkgs.writeShellScriptBin "scripts-${k2}-${k1}" ''exec ${lib.inst.writeSystemScripts { inherit system pkgs; }} "$@"'') v) systems;
 
 in { inherit systems installers; script = ''
     echo 'no-op' ; exit true
