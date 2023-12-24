@@ -119,9 +119,6 @@ Delete all store components listed in the list of added store components (which,
 #*/# end of MarkDown, beginning of NixPkgs overlay:
 dirname: inputs: final: prev: let
     inherit (final) pkgs; lib = inputs.self.lib.__internal__;
-    genericArgParse = lib.fun.extractBashFunction (builtins.readFile lib.inst.setup-scripts.utils) "generic-arg-parse";
-    genericArgHelp = lib.fun.extractBashFunction (builtins.readFile lib.inst.setup-scripts.utils) "generic-arg-help";
-    genericArgVerify = lib.fun.extractBashFunction (builtins.readFile lib.inst.setup-scripts.utils) "generic-arg-verify";
 in {
 
     nix-store-send = pkgs.substituteAll {
@@ -129,14 +126,14 @@ in {
         shell = "${pkgs.bash}/bin/bash";
         nix = "${pkgs.nix}/bin/nix --extra-experimental-features nix-command";
         narHash = "${pkgs.nar-hash}/bin/nar-hash";
-        inherit genericArgParse;
+        inherit (lib.fun.bash.asVars) generic_arg_parse;
     };
     nix-store-recv = pkgs.substituteAll {
         src = ./nix-store-recv.sh; dir = "bin"; name = "nix-store-recv"; isExecutable = true;
         shell = "${pkgs.bash}/bin/bash";
         unshare = "${pkgs.util-linux}/bin/unshare";
         xargs = "${pkgs.findutils}/bin/xargs";
-        inherit genericArgParse genericArgHelp genericArgVerify;
+        inherit (lib.fun.bash.asVars) generic_arg_parse generic_arg_help generic_arg_verify;
     };
 
     nar-hash = pkgs.runCommandLocal "nar-hash" {

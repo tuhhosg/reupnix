@@ -26,7 +26,7 @@ More abstractions to come ...
 
 ```nix
 #*/# end of MarkDown, beginning of NixOS module:
-dirname: inputs: specialArgs@{ config, pkgs, lib, nodes, utils, extraModules, ... }: let lib = inputs.self.lib.__internal__; in let
+dirname: inputs: moduleArgs@{ config, pkgs, lib, nodes, utils, extraModules, ... }: let lib = inputs.self.lib.__internal__; in let
     cfg = config.th.target.containers;
     hostConfig = config;
 

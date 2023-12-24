@@ -191,7 +191,7 @@ dirname: inputs: pkgs: let
         }) minimal);
     };
 
-    installers = lib.mapAttrs (k1: v: lib.mapAttrs (k2: system: pkgs.writeShellScriptBin "scripts-${k2}-${k1}" ''exec ${lib.inst.writeSystemScripts { inherit system pkgs; }} "$@"'') v) systems;
+    installers = lib.mapAttrs (k1: v: lib.mapAttrs (k2: system: pkgs.writeShellScriptBin "scripts-${k2}-${k1}" ''exec ${lib.installer.writeSystemScripts { inherit system pkgs; }} "$@"'') v) systems;
 
 in { inherit systems installers; script = test.useTsBlock { inherit pkgs dirname; filename = "nix_store_send.nix.md"; ticks = "````"; context = {
     inherit dirname; pkgs = {

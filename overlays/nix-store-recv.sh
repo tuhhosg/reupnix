@@ -207,9 +207,9 @@ function do-cleanup {
 }
 
 
-@genericArgParse@
-@genericArgHelp@
-@genericArgVerify@
+source @generic_arg_parse@
+source @generic_arg_help@
+source @generic_arg_verify@
 
 #set -x
 main "$@"

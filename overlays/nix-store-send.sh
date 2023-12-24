@@ -165,7 +165,7 @@ function do-send { ( dir=$(mktemp -d) ; trap "rm -rf $dir" EXIT ; cd $dir ; (
 
 ) ) }
 
-@genericArgParse@
+source @generic_arg_parse@
 
 prepare-sending "$@"
 [[ ! ${args[stats]:-} ]] || show-stats "${args[stats]}"

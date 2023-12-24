@@ -18,13 +18,16 @@ in { imports = [ ({ ## Hardware
     nxp.imx8-boot.enable = true; nxp.imx8-boot.soc = "iMX8MP";
     nixpkgs.config.allowUnfreePredicate = pkg: builtins.elem (lib.getName pkg) [ "firmware-imx" ];
     boot.loader.generic-extlinux-compatible.enable = lib.mkForce false;
-    setup.boot.enable = lib.mkForce false;
+    setup.bootpart.enable = lib.mkForce false; # (Why) Do we need to force this?
     # The i.MX expects the boot image starting at sector 64. The multiple copies of the GPT would usually conflict with that, so move them:
     th.hermetic-bootloader.extraGptOffset = 3 * 1024 * 2; # (3M in sectors)
     setup.disks.partitions."bootloader-${hash}" = lib.mkForce null;
     boot.kernelParams = [ "console=ttymxc1" ];
 
-    th.minify.shrinkKernel.baseKernel = pkgs.linux-imx_v8;
+    th.minify.shrinkKernel.baseKernel = if ((lib.fileContents "${pkgs.path}/.version") <= "23.05") then pkgs.linux-imx_v8 else pkgs.linux-imx_v8.override (old: { src = pkgs.linux-imx_v8.src.override (old: { postPatch = (old.postPatch or "") + ''
+        printf '%s\n%s\n' 'CONFIG_AUTOFS_FS=m' "$( cat arch/arm64/configs/imx_v8_defconfig )" > arch/arm64/configs/imx_v8_defconfig
+    ''; }); }); # The above does not actually propagate into the build b/c the merging order of the kernel args is wrong, so: (EDIT: Well, this option is also disabled. And applying config file changes like »minify.shrinkKernel« does it should work.)
+    system.requiredKernelConfig = lib.mkForce [ ];
     #th.minify.shrinkKernel.usedModules = ./minify.lsmod; # (There are build errors in at least »drivers/usb/typec/mux/gpio-switch« (undefined symbols).)
 
     ## Networking:
@@ -42,7 +45,7 @@ in { imports = [ ({ ## Hardware
 
 }) (lib.mkIf true { ## Test Stuff
 
-    services.getty.autologinUser = "root"; users.users.root.hashedPassword = "${lib.fun.removeTailingNewline (lib.readFile "${inputs.self}/utils/res/root.sha256-pass")}"; # .password = "root";
+    services.getty.autologinUser = "root"; users.users.root.hashedPassword = "${lib.fun.removeTailingNewline (lib.readFile "${inputs.self}/utils/res/root.${if (builtins.substring 0 5 inputs.nixpkgs.lib.version) == "22.05" then "sha256" else "yescrypt"}-pass")}"; # .password = "root";
 
     boot.kernelParams = [ "boot.shell_on_fail" ]; wip.base.panic_on_fail = false;
 

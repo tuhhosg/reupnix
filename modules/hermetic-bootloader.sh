@@ -120,7 +120,7 @@ function write-boot-partition {( set -u # 1: tree, 2: blockDev, 3: label, 4?: se
     tree=$1 ; blockDev=$2 ; label=$3 ; selfRef=${4:-}
     # TODO: is it possible to just "flash" an empty FAT32? The label can be replaced with dd ...
     @{pkgs.dosfstools}/bin/mkfs.vfat -n "$label" "$blockDev" &1>/dev/null || @{pkgs.dosfstools}/bin/mkfs.vfat -n "$label" "$blockDev" || exit
-    root=$( @{pkgs.coreutils}/bin/mktemp -d ) ; mount "$blockDev" $root ; trap "umount $root ; @{pkgs.coreutils}/bin/rmdir $root" EXIT || exit
+    root=$( @{pkgs.coreutils}/bin/mktemp -d ) ; @{pkgs.util-linux}/bin/mount "$blockDev" $root ; trap "@{pkgs.util-linux}/bin/umount $root ; @{pkgs.coreutils}/bin/rmdir $root" EXIT || exit
     write-to-fs $tree "$root" "$selfRef" || exit
 )}
 

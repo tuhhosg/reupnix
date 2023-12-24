@@ -9,7 +9,7 @@ Base configuration for the target devices, pulling in everything that all target
 
 ```nix
 #*/# end of MarkDown, beginning of NixOS module:
-dirname: inputs: { config, pkgs, lib, ... }: let lib = inputs.self.lib.__internal__; in let
+dirname: inputs: moduleArgs@{ config, pkgs, lib, ... }: let lib = inputs.self.lib.__internal__; in let
     cfg = config.th.target.defaults;
 in {
 
@@ -22,7 +22,7 @@ in {
     in lib.mkIf cfg.enable (lib.mkMerge [ ({
 
         ## Enable modules:
-        wip.base.enable = true;
+        wip.base.enable = true; wip.base.autoUpgrade = false;
         th.hermetic-bootloader.enable = true;
         th.target.fs.enable = true;
         th.target.specs.enable = true;

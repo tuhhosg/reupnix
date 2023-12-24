@@ -25,7 +25,7 @@ The description for the LCTES 2023 Artifact Submission can be found in [`utils/l
 This is a nix flake repository, so [`./flake.nix`](./flake.nix) is the entry point and export mechanism for almost everything.
 
 [`./lib/`](./lib/) adds some additional library functions as `.th` to the default `nixpkgs.lib`.
-These get passed to all other files as `inputs.self.lib.th`.
+These get passed to all other files as `inputs.self.lib.__internal__.th`.
 
 [`./hosts/`](./hosts/) contains the entry point NixOS config modules for each host(-type).
 The `default.nix` specifies the names of multiple `instances` of the host type. The ones with `-minimal` suffix have a standard set of [system minifications](./modules/minify.nix.md) applied, the `-baseline` ones are without minification, and the ones without suffix have some additional debugging bloat enabled.

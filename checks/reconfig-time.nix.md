@@ -73,7 +73,7 @@ dirname: inputs: pkgs: let
         })) minimal);
     };
 
-    installers = lib.mapAttrs (k1: v: lib.mapAttrs (k2: system: pkgs.writeShellScriptBin "scripts-${k2}-${k1}" ''exec ${lib.inst.writeSystemScripts { inherit system pkgs; }} "$@"'') v) systems;
+    installers = lib.mapAttrs (k1: v: lib.mapAttrs (k2: system: pkgs.writeShellScriptBin "scripts-${k2}-${k1}" ''exec ${lib.installer.writeSystemScripts { inherit system pkgs; }} "$@"'') v) systems;
 
 in { inherit systems installers; script = ''
     echo 'no-op' ; exit true

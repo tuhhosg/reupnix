@@ -88,12 +88,12 @@ in { imports = [ ({ ## Hardware
     # Just to prove that this can be installed very small disk (with a 640MiB disk, the »/system« partition gets ~360MiB):
     setup.disks.devices.primary.size = lib.mkForce "640M"; setup.disks.devices.primary.alignment = 8;
     th.target.fs.dataSize = "1K"; fileSystems."/data" = lib.mkForce { fsType = "tmpfs"; device = "tmpfs"; }; # don't really need /data
-    #fileSystems."/system".formatOptions = lib.mkForce "-E nodiscard"; # (remove »-O inline_data«, which does not work for too small inodes used as a consequence of the tiny FS size)
+    #fileSystems."/system".formatArgs = lib.mkForce [ "-E" "nodiscard" ]; # (remove »-O inline_data«, which does not work for too small inodes used as a consequence of the tiny FS size, but irrelevant now that we use a fixed inode size)
 
 
 }) */ (lib.mkIf true { ## Temporary Test Stuff
 
-    services.getty.autologinUser = "root"; users.users.root.hashedPassword = "${lib.fun.removeTailingNewline (lib.readFile "${inputs.self}/utils/res/root.sha256-pass")}"; # .password = "root";
+    services.getty.autologinUser = "root"; users.users.root.hashedPassword = "${lib.fun.removeTailingNewline (lib.readFile "${inputs.self}/utils/res/root.${if (builtins.substring 0 5 inputs.nixpkgs.lib.version) == "22.05" then "sha256" else "yescrypt"}-pass")}"; # .password = "root";
 
     boot.kernelParams = [ "boot.shell_on_fail" ]; wip.base.panic_on_fail = false;
 

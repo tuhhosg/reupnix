@@ -1,1 +1,1 @@
-dirname: inputs@{ self, nixpkgs, ...}: self.lib.__internal__.fun.importModules inputs dirname { }
+dirname: inputs: inputs.functions.lib.importModules inputs dirname { }

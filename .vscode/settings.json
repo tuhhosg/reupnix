@@ -13,7 +13,6 @@
 		"ahci", // kmod
 		"alsa", // program
 		"amdgpu", // kmod
-		"lctes", // abbr (Languages, Compilers, Tools and Theory of Embedded Systems)
 		"analogix", // kmod
 		"anyprot", // option
 		"askpass", // program
@@ -132,6 +131,7 @@
 		"getsize64", // cli arg
 		"getty", // serice
 		"gids", // abbr/plural (group IDs)
+		"github", // name
 		"gnugrep", // package
 		"gnupg", // program
 		"gnutls", // package
@@ -179,6 +179,7 @@
 		"kmod", // program/function
 		"koenkk", // name
 		"lcrypto", // lib??
+		"lctes", // abbr (Languages, Compilers, Tools and Theory of Embedded Systems)
 		"LESSOPEN", // env var
 		"libaio", // cli arg
 		"libfido2", // library
@@ -316,10 +317,10 @@
 		"readline", // package
 		"realpath", // program / function
 		"reconix", // this repo
-		"reupnix", // this repo
 		"redistributable", // word
 		"resolv", // file name
 		"resolvconf", // program
+		"reupnix", // this repo
 		"rhosts", // linux
 		"rockchip", // hardware
 		"rockchipdrm", // kmod

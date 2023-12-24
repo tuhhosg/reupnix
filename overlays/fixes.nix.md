@@ -32,10 +32,18 @@ in {
     libhwy = prev.libhwy.overrideAttrs (old: lib.optionalAttrs (pkgsVersion >= "23.05") {
         doCheck = false; # HwyConvertTestGroup/HwyConvertTest.TestAllTruncate/AVX3_ZEN4 fails
     });
-    qemu_kvm = prev.qemu_kvm.override (old: lib.optionalAttrs (pkgsVersion >= "23.05") {
+    gnugrep = prev.gnugrep.overrideAttrs (old: lib.optionalAttrs (pkgsVersion >= "23.11") {
+        doCheck = false;
+    });
+    coreutils = prev.coreutils.overrideAttrs (old: lib.optionalAttrs (pkgsVersion >= "23.11") {
+        doCheck = false; # tests/misc/printf-cov
+    });
+    qemu_kvm = prev.qemu_kvm.override (old: (lib.optionalAttrs (pkgsVersion >= "23.05") {
         # some audio thing depends on guile, which fails to build without some string-conversion stuff, so disable all audio things:
         alsaSupport = false; jackSupport = false; pulseSupport = false; sdlSupport = false; spiceSupport = false;
-    });
+    }) // (lib.optionalAttrs (pkgsVersion >= "23.11") {
+        pipewireSupport = false;
+    }));
     perl536 = (prev.perl536.overrideAttrs (old: lib.optionalAttrs (pkgsVersion == "22.11") {
         passthru = old.passthru // { pkgs = old.passthru.pkgs.override {
             # (this effectively disables config.nixpkgs.config.perlPackageOverrides)
@@ -54,6 +62,14 @@ in {
             });
         });
     });
+    perl538 = prev.perl538.override (old: lib.optionalAttrs (pkgsVersion == "23.11") {
+        # (this effectively disables config.nixpkgs.config.perlPackageOverrides)
+        overrides = (_: {
+            Po4a = (lib.recurseIntoAttrs prev.perl538.pkgs).Po4a.overrideAttrs (old: {
+                doCheck = false;
+            });
+        });
+    });
 
 /*
     # And these failed at some point, but now don't?
@@ -68,21 +84,4 @@ in {
     });
  */
 
-    # vim fails to build without some locale stuff, so make xxd not depend of a full vim build:
-    xxd = if (pkgsVersion < "23.05") then prev.xxd else pkgs.stdenv.mkDerivation {
-        pname = "xxd"; inherit (pkgs.vim) meta version;
-        src = "${pkgs.vim.src}/src/xxd";
-        unpackPhase = ''
-            runHook preUnpack
-            cp -rT $src .
-            runHook postUnpack
-        '';
-        installPhase = ''
-            runHook preInstall
-            mkdir -p $out/bin
-            cp xxd $out/bin
-            runHook postInstall
-        '';
-        # TODO: manpage and such
-    };
 }

@@ -41,7 +41,7 @@ in {
         fileSystems."/"             = { fsType  =  "tmpfs";    device = "tmpfs"; neededForBoot = implied; options = [ "mode=755" ]; };
 
         setup.disks.partitions."system-${hash}" = { type = "8300"; size = null; order = 500; };
-        fileSystems."/system"       = { fsType  =   "ext4";    device = "/dev/disk/by-partlabel/system-${hash}"; neededForBoot = true; options = [ "noatime" "ro" ]; formatOptions = "-O inline_data -b 4k -E nodiscard -F"; };
+        fileSystems."/system"       = { fsType  =   "ext4";    device = "/dev/disk/by-partlabel/system-${hash}"; neededForBoot = true; options = [ "noatime" "ro" ]; formatArgs = [ "-O" "inline_data" "-b" "4k" "-E" "nodiscard" "-F" ]; };
         fileSystems."/nix/store"    = { options = [ "bind" "ro" "private" ]; device = "/system/nix/store"; neededForBoot = implied; };
 
         systemd.tmpfiles.rules = [
@@ -60,7 +60,7 @@ in {
     }) (lib.mkIf (cfg.dataDir == null) {
         # Make /data mountable in default spec:
 
-        fileSystems."/data"         = { fsType  =   "ext4";    device = "/dev/disk/by-partlabel/data-${hash}"; neededForBoot = false; options = [ "noatime" "noauto" "nofail" ]; formatOptions = "-O inline_data -E nodiscard -F"; };
+        fileSystems."/data"         = { fsType  =   "ext4";    device = "/dev/disk/by-partlabel/data-${hash}"; neededForBoot = false; options = [ "noatime" "noauto" "nofail" ]; formatArgs = [ "-O" "inline_data" "-E" "nodiscard" "-F" ]; };
 
     }) (lib.mkIf (cfg.dataDir != null) {
         # On a read/writable data partition, provide persistent logs and container volume storage separately for each spec:

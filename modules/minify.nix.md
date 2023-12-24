@@ -121,7 +121,7 @@ in {
                 The config can't be switched to at runtime, and the bootloader needs to be installed explicitly.
                 This depends on the »../patches/nixpkgs-make-bootable-optional.patch« patch.
             '';
-            system.build.makeSwitchable = false; # depends on perl and the bootloader installer
+            system = if (lib.strings.fileContents "${inputs.nixpkgs}/.version") <= "23.11" then { build.makeSwitchable = false; } else { system.switch.enable = false; }; # depends on perl and the bootloader installer
             systemd.shutdownRamfs.enable = lib.mkDefault false;
         });
 
@@ -194,7 +194,7 @@ in {
             disableModule."config/locale.nix" = true;
             # the default »pkgs.glibc-locales« has ~215MB
             #i18n.supportedLocales = [ "C.UTF-8/UTF-8" ]; i18n.defaultLocale = "C.UTF-8/UTF-8";
-            i18n.supportedLocales = [ ]; i18n.defaultLocale = "C";
+            i18n.supportedLocales = [ "C.UTF-8/UTF-8" ]; i18n.defaultLocale = "C";
             # ... there is quite a bit more to be done here, often within packages ...
             nixpkgs.overlays = lib.mkIf (!config.system.build?isVmExec) [ (final: prev: {
                 util-linux = prev.util-linux.override { nlsSupport = false; };
@@ -209,6 +209,7 @@ in {
                     #in lib.concatStrings [ all.before minimal all.after ];
                     postInstall = prev.postInstall + ''
                         # keep files for »C.UTF-8/UTF-8« (which should be the only local built in »$out/lib/locale/locale-archive«):
+                        set -x ; ls -al $out/lib/locale
                         ( cd $out/share/i18n/locales  ; find . ! -name POSIX    -type f -exec rm -rf {} + )
                         ( cd $out/share/i18n/charmaps ; find . ! -name UTF-8.gz -type f -exec rm -rf {} + )
                         rm -rf $out/share/locale
@@ -222,6 +223,23 @@ in {
                 gnupg = prev.gnupg.overrideAttrs (prev: {
                     enableMinimal = true;
                 });
+                # vim fails to build without some locale stuff, so make xxd not depend of a full vim build:
+                xxd = if ((lib.fileContents "${pkgs.path}/.version") < "23.05") then prev.xxd else pkgs.stdenv.mkDerivation {
+                    pname = "xxd"; inherit (pkgs.vim) meta version;
+                    src = "${pkgs.vim.src}/src/xxd";
+                    unpackPhase = ''
+                        runHook preUnpack
+                        cp -rT $src .
+                        runHook postUnpack
+                    '';
+                    installPhase = ''
+                        runHook preInstall
+                        mkdir -p $out/bin
+                        cp xxd $out/bin
+                        runHook postInstall
+                    '';
+                    # TODO: manpage and such
+                };
             }) ];
         });
 
@@ -388,7 +406,7 @@ in {
             description = ''Shrink »systemd«: The default NixOS systemd is built with support for pretty much everything. This remove most of that.'';
             nixpkgs.overlays = lib.mkIf (!config.system.build?isVmExec) [ (final: prev: {
                 # nixpkgs/pkgs/os-specific/linux/systemd/default.nix#L608
-                systemd = (prev.systemd.override ({
+                systemd = (prev.systemd.override (old: {
                     # keys taken from definition of »systemd-minimal« in »pkgs/top-level/all-packages.nix:23048«:
                     withAnalyze = false; # sufficient to do beforehand?
                     withApparmor = false;
@@ -430,6 +448,11 @@ in {
                     withPam = false;
                     withUkify = false;
                     withUtmp = false;
+                }) // (lib.optionalAttrs ((lib.strings.fileContents "${inputs.nixpkgs}/.version") >= "23.11") {
+                    withBootloader = old.withEfi or true;
+                    withRepart = false;
+                    withSysupdate = false;
+                    withSysusers = false;
                 })));
                 util-linux = prev.util-linux.override { systemdSupport = false; systemd = null; };
             }) ];
@@ -467,7 +490,7 @@ in {
             # further optimizations: lto,
             # $ wget -qO- https://cdn.kernel.org/pub/linux/kernel/v5.x/linux-5.15.30.tar.xz | xzcat - | tar -xf- --strip-components=1
             th.minify.shrinkKernel.overrideConfig = {
-                CRYPTO_USER_API_HASH = "m"; AUTOFS4_FS = "m"; # else assertion fails
+                CRYPTO_USER_API_HASH = "m"; AUTOFS_FS = "m"; AUTOFS4_FS = "m"; # else assertion fails
                 SATA_AHCI = "m"; # »ahci« module
                 OVERLAY_FS = "m"; # »overlay« module
                 BLK_DEV_LOOP = "m"; # »loop« module

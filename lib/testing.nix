@@ -21,7 +21,7 @@ in pkgs: rec {
         wip.base.includeInputs = lib.mkForce { };
     };
     ## Resizes a hosts disk (image):
-    resize = size: system: override system { setup.disks.devices.primary.size = lib.mkForce size; };
+    resize = size: system: override system { setup.disks.devices.primary.size = lib.mkForce size; th.target.fs.dataSize = "1K"; fileSystems."/data" = lib.mkForce { fsType = "tmpfs"; device = "tmpfs"; }; };
     dropRefs = builtins.unsafeDiscardStringContext; # Use this when referencing something from a »run-in-vm« test that should not be included in the initial installation.
 
     ## In bash, logs a command and then executes it reporting its time afterwards:
@@ -39,7 +39,7 @@ in pkgs: rec {
                 ( ${measurement} ) >$( if [[ ''${args[no-vm]:-} ]] ; then echo /tmp/shared/log ; else echo ''${args[x-tmp]}/log ; fi )
             '';
         });
-        scripts = lib.inst.writeSystemScripts { system = system'; pkgs = pkgs; };
+        scripts = lib.installer.writeSystemScripts { system = system'; pkgs = pkgs; };
     in ''(
         tmp=$( mktemp -d ) && trap "rm -rf '$tmp'" EXIT || exit
         install=( ${scripts} install-system $tmp/image --no-inspect --toplevel=${toplevel system} --vm-shared=$tmp --x-tmp=$tmp --x-out="$out" )
@@ -100,7 +100,7 @@ in pkgs: rec {
         tests' = lib.imap0 (i: { pre ? "", test, }: { pre = if pre == "" then "true" else toFile "pre-test" i pre; test = toFile "test" i test; }) (map (test: if builtins.isString test then { inherit test; } else test) tests);
         known_hosts = builtins.toFile "dummy_known_hosts" ''[127.0.0.1]:* ${lib.readFile "${inputs.self}/utils/res/dropbear_ecdsa_host_key.pub"}'';
         log = message: if quiet then "" else ''echo "${message}" ;'';
-        scripts = lib.inst.writeSystemScripts { system = system'; pkgs = pkgs; };
+        scripts = lib.installer.writeSystemScripts { system = system'; pkgs = pkgs; };
     in ''(
         ${log "installing system: ${toplevel system'}"}
         cp ${inputs.self}/utils/res/ssh_testkey_1 ./ssh_testkey_1 2>/dev/null || true ; chmod 400 ./ssh_testkey_1 || exit

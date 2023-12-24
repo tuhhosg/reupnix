@@ -22,8 +22,8 @@ in {
         extraGptOffset = lib.mkOption { description = "Additional space to clear at the start and end of the boot disk, for firmware and such."; type = lib.types.ints.unsigned; default = 0; };
 
         uboot.base = lib.mkOption { description = "... The result of calling »pkgs.buildUboot« (or equivalent)."; type = lib.types.nullOr lib.types.package; default = null; };
-        uboot.env = lib.mkOption { description = "Base u-boot env. Must set »scriptaddr«, »kernel_addr_r«, »fdt_addr_r«, »ramdisk_addr_r«, and »fdtfile« (unless the ».base« u-boot already configures those)."; type = lib.types.attrsOf lib.types.string; default = null; };
-        uboot.extraConfig = lib.mkOption { description = "."; type = lib.types.listOf lib.types.string; default = [ ]; };
+        uboot.env = lib.mkOption { description = "Base u-boot env. Must set »scriptaddr«, »kernel_addr_r«, »fdt_addr_r«, »ramdisk_addr_r«, and »fdtfile« (unless the ».base« u-boot already configures those)."; type = lib.types.attrsOf lib.types.str; default = null; };
+        uboot.extraConfig = lib.mkOption { description = "."; type = lib.types.listOf lib.types.str; default = [ ]; };
         uboot.mmcDev = lib.mkOption { description = "MMC device number that u-boot should use."; type = lib.types.ints.between 0 128; default = null; };
         uboot.result = lib.mkOption { description = "The resulting reconfigured u-boot. For a rPI, this can be passed back as ».extraFiles« (with a matching »config.txt«), other boards may need to directly flash this somewhere."; type = lib.types.nullOr lib.types.package; };
 

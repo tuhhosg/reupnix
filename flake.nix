@@ -7,7 +7,7 @@
 ); inputs = {
 
     # To update »./flake.lock«: $ nix flake update
-    nixpkgs = { url = "github:NixOS/nixpkgs/nixos-23.05"; };
+    nixpkgs = { url = "github:NixOS/nixpkgs/nixos-23.11"; };
     old-nixpkgs = { url = "github:NixOS/nixpkgs/c777cdf5c564015d5f63b09cc93bef4178b19b01"; }; # 22.05 @ 2022-05-05
     new-nixpkgs = { url = "github:NixOS/nixpkgs/9370544d849be8a07193e7611d02e6f6f1b10768"; }; # 22.05 @ 2022-07-29
     functions = { url = "github:NiklasGollenstede/nix-functions"; inputs.nixpkgs.follows = "nixpkgs"; };
@@ -15,21 +15,22 @@
     wiplib = { url = "github:NiklasGollenstede/nix-wiplib"; inputs.nixpkgs.follows = "nixpkgs"; inputs.installer.follows = "installer";  inputs.functions.follows = "functions"; };
     nixos-imx = { url = "github:NiklasGollenstede/nixos-imx"; inputs.nixpkgs.follows = "nixpkgs"; inputs.installer.follows = "installer";  inputs.functions.follows = "functions"; inputs.wiplib.follows = "wiplib"; };
     nix = { url = "github:NixOS/nix/38b90c618f5ce4334b89c0124c5a54f339a23db6"; inputs.nixpkgs.follows = "nixpkgs"; inputs.nixpkgs-regression.follows = "nixpkgs"; };
+    #ba-aziot-nixos = { /* url = "github:ef4203/ba-aziot-nixos"; */ inputs.nixpkgs.follows = "nixpkgs"; };
     latest-nixpkgs = { url = "github:NixOS/nixpkgs/nixos-unstable"; };
 
 }; outputs = inputs@{ wiplib, ... }: let patches = let
     base = [
-        inputs.wiplib.patches.nixpkgs-test
-        inputs.wiplib.patches.nixpkgs-fix-systemd-boot-install
-        ./patches/nixpkgs-make-required-packages-optional.patch
+        inputs.wiplib.patches.nixpkgs.test
+        inputs.wiplib.patches.nixpkgs.fix-systemd-boot-install
+        ./patches/nixpkgs/make-required-packages-optional.patch
     ];
 in rec {
 
     nixpkgs = base ++ [
-        ./patches/nixpkgs-make-switchable-optional-23.05.patch
+        # make-switchable is implemented in 23.11
     ];
     new-nixpkgs = base ++ [
-        ./patches/nixpkgs-make-bootable-optional.patch
+        ./patches/nixpkgs/make-bootable-optional.patch
     ];
     old-nixpkgs = new-nixpkgs;
 
@@ -41,12 +42,12 @@ in rec {
     inputs = builtins.removeAttrs all-inputs [ "new-nixpkgs" "old-nixpkgs" ];
 
     # The normal build of all hosts:
-    systemsFlake = lib.inst.mkSystemsFlake {
+    systemsFlake = lib.installer.mkSystemsFlake {
         inputs = inputs; overlayInputs = builtins.removeAttrs inputs [ "nix" ];
     };
 
     # All hosts cross compiled from x64 (which is irrelevant for those already x64):
-    x64-systemsFlake = lib.inst.mkSystemsFlake {
+    x64-systemsFlake = lib.installer.mkSystemsFlake {
         inputs = inputs; overlayInputs = builtins.removeAttrs inputs [ "nix" ];
         buildPlatform = "x86_64-linux";
         renameOutputs = key: "x64:${key}";
@@ -62,7 +63,7 @@ in rec {
         age-inputs = inputs // { nixpkgs = all-inputs."${age}-nixpkgs"; };
         # Note: Any »inputs.nixpkgs.follows = "nixpkgs"« above will always point at the "current" version of »nixpkgs«. »wiplib« and »nixos-imx« use »inputs.nixpkgs.lib« (explicitly, but nothing else).
         # »repo«, which gets merged into the outputs, which are also »inputs.self«, used the new »nixpkgs« to import its stuff, so that import has to be repeated:
-    in lib.fun.importRepo age-inputs ./. (repo: { "${age}-systemsFlake" = lib.inst.mkSystemsFlake (rec {
+    in lib.fun.importRepo age-inputs ./. (repo: { "${age}-systemsFlake" = lib.installer.mkSystemsFlake (rec {
         inputs = age-inputs // { self = self // repo; }; overlayInputs = builtins.removeAttrs inputs [ "nix" ];
         renameOutputs = key: "${age}:${key}";
     } // legacyFix); })) [ "new" "old" ]) new-systemsFlake old-systemsFlake;
@@ -77,7 +78,7 @@ in [ # Run »nix flake show --allow-import-from-derivation« to see what this me
         defaultPackage = pkgs.symlinkJoin { name = "everything"; paths = builtins.attrValues everything; };
         #defaultPackage = pkgs.linkFarm "everything" everything;
     in {
-        packages = packages // { default = defaultPackage; } // { nix = inputs.nix.packages.${pkgs.system}.nix; };
+        packages = { default = defaultPackage; } // { nix = inputs.nix.packages.${pkgs.system}.nix; };
         checks = packages // checks.checks; inherit (checks) apps;
     }))
 ]); }
