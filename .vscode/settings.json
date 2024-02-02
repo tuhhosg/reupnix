@@ -1,5 +1,5 @@
 {
-	"editor.insertSpaces": true, "editor.tabSize": 4, "editor.detectIndentation": false, // (tabs don't work well in nix multiline strings or when pasting bash snippets, so unfortuntely have to use spaces for indention)
+	"[nix]": { "editor.insertSpaces": true, "editor.tabSize": 4, "editor.detectIndentation": false, }, // (tabs don't work well in nix multiline strings or when pasting bash snippets, so unfortuntely have to use spaces for indention)
 
 	"cSpell.diagnosticLevel": "Information", // to find spelling mistakes
 	"cSpell.words": [ // this got a bit out of hand ...

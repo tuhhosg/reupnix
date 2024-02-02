@@ -41,11 +41,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1703152384,
-        "narHash": "sha256-ICtBNYwfXtY2/Nrgd5+gIq1Qvwf7HczCljCQg4CqHbk=",
+        "lastModified": 1706557688,
+        "narHash": "sha256-UXylOaV6fvJq5ph0KTf93nk9v37uezMJT8nfKObQLRo=",
         "owner": "NiklasGollenstede",
         "repo": "nix-functions",
-        "rev": "11d50f31534af0d447702af9f04788379daae8fe",
+        "rev": "c176ccb324740182c9d9d3f032cae5146254f5ce",
         "type": "github"
       },
       "original": {
@@ -75,22 +75,6 @@
       "original": {
         "owner": "NiklasGollenstede",
         "repo": "nixos-installer",
-        "type": "github"
-      }
-    },
-    "latest-nixpkgs": {
-      "locked": {
-        "lastModified": 1701718080,
-        "narHash": "sha256-6ovz0pG76dE0P170pmmZex1wWcQoeiomUZGggfH9XPs=",
-        "owner": "NixOS",
-        "repo": "nixpkgs",
-        "rev": "2c7f3c0fb7c08a0814627611d9d7d45ab6d75335",
-        "type": "github"
-      },
-      "original": {
-        "owner": "NixOS",
-        "ref": "nixos-unstable",
-        "repo": "nixpkgs",
         "type": "github"
       }
     },
@@ -212,6 +196,22 @@
         "type": "github"
       }
     },
+    "nixpkgs-unstable": {
+      "locked": {
+        "lastModified": 1701718080,
+        "narHash": "sha256-6ovz0pG76dE0P170pmmZex1wWcQoeiomUZGggfH9XPs=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "2c7f3c0fb7c08a0814627611d9d7d45ab6d75335",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "ref": "nixos-unstable",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
     "old-nixpkgs": {
       "locked": {
         "lastModified": 1651726670,
@@ -232,12 +232,13 @@
       "inputs": {
         "functions": "functions",
         "installer": "installer",
-        "latest-nixpkgs": "latest-nixpkgs",
         "new-nixpkgs": "new-nixpkgs",
         "nix": "nix",
         "nixos-imx": "nixos-imx",
         "nixpkgs": "nixpkgs",
+        "nixpkgs-unstable": "nixpkgs-unstable",
         "old-nixpkgs": "old-nixpkgs",
+        "systems": "systems",
         "wiplib": "wiplib"
       }
     },
@@ -269,7 +270,9 @@
         "nixpkgs": [
           "nixpkgs"
         ],
-        "systems": "systems"
+        "systems": [
+          "systems"
+        ]
       },
       "locked": {
         "lastModified": 1703152501,

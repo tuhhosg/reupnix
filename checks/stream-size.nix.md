@@ -16,10 +16,10 @@ dirname: inputs: pkgs: let
     new = test.unpinInputs inputs.self.nixosConfigurations."new:x64-minimal";
     old = test.unpinInputs inputs.self.nixosConfigurations."old:x64-minimal";
 
-in ''
+in { script = '''
 echo "Update stream stats (old -> new)"
 cat ${test.nix-store-send old new ""}/stats
 echo
 echo "Initial image (stream null -> old)"
 cat ${test.nix-store-send null old ""}/stats
-''
+''; }

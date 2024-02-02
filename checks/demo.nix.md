@@ -70,7 +70,7 @@ dirname: inputs: pkgs: let
         ''; }
     ];
 
-in ''
+in { script = '''
 echo "old system: ${toplevel old}"
 echo "new system: ${toplevel new}"
 echo "Update stream stats (old -> new)"
@@ -80,4 +80,4 @@ echo "stream path: ${nix-store-send old new ""}"
 echo
 echo -n continue? ; read
 ${run-in-vm old { } update-cmds}
-''
+''; }

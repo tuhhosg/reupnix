@@ -23,8 +23,8 @@ dirname: inputs: pkgs: let
     }) ]; system.nixos.tags = [ "glibc" ]; });
         #specialisation.test1.configuration.th.target.containers.containers.native.modules = [ (_: config) ]; # this creates an infinite recursion
 
-in ''
+in { script = ''
 echo "Update stream when trivially changing glibc"
 : old ${toplevel old} : new ${toplevel new}
 cat ${nix-store-send old new ""}/stats
-''
+''; }

@@ -8,15 +8,16 @@
 
     # To update »./flake.lock«: $ nix flake update
     nixpkgs = { url = "github:NixOS/nixpkgs/nixos-23.11"; };
+    nixpkgs-unstable = { url = "github:NixOS/nixpkgs/nixos-unstable"; };
     old-nixpkgs = { url = "github:NixOS/nixpkgs/c777cdf5c564015d5f63b09cc93bef4178b19b01"; }; # 22.05 @ 2022-05-05
     new-nixpkgs = { url = "github:NixOS/nixpkgs/9370544d849be8a07193e7611d02e6f6f1b10768"; }; # 22.05 @ 2022-07-29
     functions = { url = "github:NiklasGollenstede/nix-functions"; inputs.nixpkgs.follows = "nixpkgs"; };
     installer = { url = "github:NiklasGollenstede/nixos-installer"; inputs.nixpkgs.follows = "nixpkgs"; inputs.functions.follows = "functions"; };
-    wiplib = { url = "github:NiklasGollenstede/nix-wiplib"; inputs.nixpkgs.follows = "nixpkgs"; inputs.installer.follows = "installer";  inputs.functions.follows = "functions"; };
-    nixos-imx = { url = "github:NiklasGollenstede/nixos-imx"; inputs.nixpkgs.follows = "nixpkgs"; inputs.installer.follows = "installer";  inputs.functions.follows = "functions"; inputs.wiplib.follows = "wiplib"; };
+    wiplib = { url = "github:NiklasGollenstede/nix-wiplib"; inputs.nixpkgs.follows = "nixpkgs"; inputs.installer.follows = "installer"; inputs.functions.follows = "functions"; inputs.systems.follows = "systems"; };
+    nixos-imx = { url = "github:NiklasGollenstede/nixos-imx"; inputs.nixpkgs.follows = "nixpkgs"; inputs.installer.follows = "installer"; inputs.functions.follows = "functions"; inputs.wiplib.follows = "wiplib"; };
     nix = { url = "github:NixOS/nix/38b90c618f5ce4334b89c0124c5a54f339a23db6"; inputs.nixpkgs.follows = "nixpkgs"; inputs.nixpkgs-regression.follows = "nixpkgs"; };
-    #ba-aziot-nixos = { /* url = "github:ef4203/ba-aziot-nixos"; */ inputs.nixpkgs.follows = "nixpkgs"; };
-    latest-nixpkgs = { url = "github:NixOS/nixpkgs/nixos-unstable"; };
+    #aziot-nixos = { url = "github:ef4203/ba-aziot-nixos"; inputs.nixpkgs.follows = "nixpkgs"; inputs.installer.follows = "installer"; inputs.functions.follows = "functions"; inputs.systems.follows = "systems"; };
+    systems.url = "github:nix-systems/default-linux";
 
 }; outputs = inputs@{ wiplib, ... }: let patches = let
     base = [
@@ -70,7 +71,7 @@ in rec {
 
 in [ # Run »nix flake show --allow-import-from-derivation« to see what this merges to:
     repo systemsFlake new-systemsFlake old-systemsFlake x64-systemsFlake
-    (lib.fun.forEachSystem [ "aarch64-linux" "x86_64-linux" ] (localSystem: let
+    (lib.fun.forEachSystem (import inputs.systems) (localSystem: let
         pkgs = lib.fun.importPkgs (builtins.removeAttrs inputs [ "nix" ]) { system = localSystem; };
         checks = (lib.fun.importWrapped all-inputs "${self}/checks").required pkgs;
         packages = lib.fun.getModifiedPackages pkgs overlays;

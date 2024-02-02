@@ -70,7 +70,7 @@ dirname: inputs: pkgs: let
         ])}
     '';
 
-in ''
+in { script = '''
 echo "old system: ${toplevel old}"
 echo "new system: ${toplevel new}"
 echo "clb system: ${toplevel clb}"
@@ -79,7 +79,7 @@ ${nix-copy-closure "old" "new"}
 echo
 ${nix-copy-closure "old" "clb"}
 
-''
+''; }
 #${frame "echo nix copy"}
 #${run-in-vm old { } (let
 #in [

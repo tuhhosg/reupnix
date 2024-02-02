@@ -36,7 +36,7 @@ dirname: inputs: pkgs: let
         libuv = prev.libuv.overrideAttrs (old: { doCheck = false; });
     }) ]; system.nixos.tags = [ "glibc" ]; });
 
-in ''
+in { script = '''
 # Using »--dry-run« invalidates the measurement, so the old file needs to be copied.
 
 ( ${test.frame "echo 'real update'"} ) 1>&2
@@ -91,4 +91,4 @@ if [[ ,''${args[plot]:-}, == *,2,* ]] ; then cat plot* ; fi
 echo $'\n'"Differential rsync transfer of update stream onto initial image (without names, block size 512)" 1>&2
 rm -rf ./prev ; cp ${test.nix-store-send null new "--no-names"}/stream ./prev
 ${pkgs.rsync}/bin/rsync --no-whole-file --stats --block-size=700 ${test.nix-store-send new clb "--no-names"}/stream ./prev | grep -Pe 'Total|data' 1>&2
-''
+''; }

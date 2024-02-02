@@ -73,7 +73,7 @@ dirname: inputs: pkgs: let
         ''; }
     ];
 
-in ''
+in { script = '''
 echo "old system: ${toplevel old}"
 echo "new system: ${toplevel new}"
 echo "Update stream stats (old -> new)"
@@ -86,4 +86,4 @@ echo
 ${run-in-vm old { override = {
     installer.commands.postInstall = ''true || rm -rf $mnt/system/nix/store/.links'';
 }; } update-cmds}
-''
+''; }

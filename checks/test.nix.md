@@ -19,7 +19,7 @@ dirname: inputs: pkgs: let
         echo "================="
     '';
 
-in ''
+in { script = '''
 
 ${run-in-vm new { } (let
     set-the-bar = { pre = "$ssh -- 'echo foo >/tmp/bar'"; };
@@ -33,4 +33,4 @@ in [
     (frame ''echo "this shouldn't run"'')
 ])}
 
-''
+''; }
